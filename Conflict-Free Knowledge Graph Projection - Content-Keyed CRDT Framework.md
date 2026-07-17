@@ -10,7 +10,7 @@
 
 ## Abstract
 
-We define *content-keyed CRDTs* (CK-CRDTs) — a class of CRDTs whose merge partitions operations by a content-derived key, then selects a deterministic representative per class. We prove four structural results: (1) the representative-selection function must be monotone under re-import (Theorem 1); (2) the no-orphan invariant holds for any downstream CRDT with foreign-key dependencies iff canonicalization is applied at write time (Theorem 2); (3) CK-CRDT merge discards exactly the within-class loser set, with no information recoverable from the canonical state (Theorem 3); (4) convergence requires three properties of the content key — determinism, peer-publicity, and monotonicity-under-update — and violating any one breaks convergence (Theorem 4). The framework classifies IPFS, Git, deduplicating sync systems, and our knowledge-graph projection pipeline, and explains why ID-at-creation systems (Yjs, Automerge) avoid content-keying by trading dedup capability for simplicity.
+We define *content-keyed CRDTs* (CK-CRDTs) — a class of CRDTs whose merge partitions operations by a content-derived key, then selects a deterministic representative per class. We prove six structural results: (1) the representative-selection function must be monotone under re-import (Theorem 1); (2) the no-orphan invariant holds for any downstream CRDT with foreign-key dependencies iff canonicalization is applied at write time (Theorem 2); (3) CK-CRDT merge discards exactly the within-class loser set, with no information recoverable from the canonical state (Theorem 3); (4) convergence requires three properties of the content key — determinism, peer-publicity, and monotonicity-under-update — and violating any one breaks convergence (Theorem 4); (5) composite keys inherit convergence from their components (Theorem 5); (6) deterministic approximate keys converge, non-deterministic ones fail (Theorem 6). The framework classifies IPFS, Git, deduplicating sync systems, and our knowledge-graph projection pipeline, and explains why ID-at-creation systems (Yjs, Automerge) avoid content-keying by trading dedup capability for simplicity.
 
 ---
 
@@ -245,16 +245,42 @@ This paper generalizes the three-phase knowledge-graph projection pipeline descr
 
 ---
 
-## 10. Conclusion
+## 10. Extensions
 
-We defined content-keyed CRDTs (CK-CRDTs) as a class of CRDTs whose merge partitions operations by a content-derived key. We proved four structural properties:
+We resolve two of the four open questions from §9.4.
+
+**Theorem 5 (Multi-key CK-CRDTs).** Let $\kappa' = (\kappa_1, \kappa_2)$ be a composite content key where $\kappa_1 : O \to K_1$ and $\kappa_2 : O \to K_2$ are component keys. If each $\kappa_i$ satisfies (K1)–(K3) individually, then $\kappa'$ satisfies (K1)–(K3) and the CK-CRDT $(\kappa', \rho)$ converges.
+
+*Proof:* 
+
+(K1) for $\kappa'$: If $\kappa_1(o_1) = \kappa_1(o_2)$ and $\kappa_2(o_1) = \kappa_2(o_2)$, then $\kappa'(o_1) = \kappa'(o_2)$. Since each $\kappa_i$ is deterministic, $\kappa'$ is deterministic.
+
+(K2) for $\kappa'$: Since each $\kappa_i$ is invariant under delivery order (by (K2) for each component), $\kappa'$ is also invariant.
+
+(K3) for $\kappa'$: If $o'$ causally follows $o$ and agrees on all key-relevant fields, then $\kappa_i(o') = \kappa_i(o)$ for each $i$ (by (K3) for each component), so $\kappa'(o') = \kappa'(o)$. $\square$
+
+**Corollary 3.** Our pipeline's fingerprint key $\kappa(o) = \text{SHA-256}(\text{name}, \text{type}, \text{description})$ is a composite key with three components. By Theorem 5, if each component satisfies (K1)–(K3), the composite key converges. Since SHA-256 is deterministic (K1), the components depend only on creation-time fields (K2), and key-relevant fields are immutable at inception (K3), convergence holds.
+
+**Theorem 6 (Deterministic approximate keys).** Let $\kappa : O \to K$ be an approximate content key (e.g., based on Levenshtein distance or Jaccard similarity). If $\kappa$ is deterministic — same inputs produce the same key — then the CK-CRDT $(\kappa, \rho)$ converges. If $\kappa$ is non-deterministic (same inputs produce different keys on different peers), convergence fails by violation of (K1).
+
+*Proof:* If $\kappa$ is deterministic, (K1) holds by definition. (K2) and (K3) follow from the properties of the underlying similarity metric (assuming it depends only on the operation's content fields, which are fixed at creation). Convergence follows from Theorem 4. If $\kappa$ is non-deterministic, (K1) is violated, and by Theorem 4 necessity, convergence fails. $\square$
+
+**Corollary 4.** Fuzzy record linkage systems (e.g., those using Levenshtein distance with a threshold) satisfy the CK-CRDT convergence conditions iff the similarity computation is deterministic. In practice, most implementations are deterministic (same strings → same distance), so convergence holds. Non-deterministic approximations (e.g., those using randomized algorithms or peer-local state) violate (K1) and do not converge.
+
+---
+
+## 11. Conclusion
+
+We defined content-keyed CRDTs (CK-CRDTs) as a class of CRDTs whose merge partitions operations by a content-derived key. We proved six structural properties:
 
 1. **Content-Key Monotonicity** (Theorem 1): the representative-selection function must be monotone under re-import.
 2. **Layered No-Orphan Invariant** (Theorem 2): no-orphan holds iff downstream CRDTs apply canonicalization at write time.
 3. **Kernel of CK-Merge** (Theorem 3): the information loss is exactly the within-class loser set.
 4. **Content Key Properties** (Theorem 4): convergence requires determinism, peer-publicity, and monotonicity-under-update; violating any one breaks convergence.
+5. **Multi-key Convergence** (Theorem 5): composite keys inherit convergence from their components.
+6. **Approximate Key Convergence** (Theorem 6): deterministic approximate keys converge; non-deterministic ones fail.
 
-The framework classifies IPFS, deduplicating sync systems, collaborative editors, and our knowledge-graph pipeline. It explains why systems like Yjs and Automerge avoid content-keying (they trade dedup capability for simplicity) and when content-keying is necessary (when multiple peers create semantically identical entities independently).
+The framework classifies IPFS, Git, deduplicating sync systems, collaborative editors, and our knowledge-graph pipeline. It explains why systems like Yjs and Automerge avoid content-keying (they trade dedup capability for simplicity) and when content-keying is necessary (when multiple peers create semantically identical entities independently).
 
 ---
 
