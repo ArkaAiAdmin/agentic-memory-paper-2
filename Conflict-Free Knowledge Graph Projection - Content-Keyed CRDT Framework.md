@@ -45,7 +45,11 @@ We provide answers to all four questions.
 - **Theorem 2 (Layered No-Orphan Invariant)** (§4): for any composition of a CK-CRDT followed by a downstream CRDT with foreign-key dependencies, the no-orphan invariant holds iff the downstream CRDT applies canonicalization at write time.
 - **Theorem 3 (Kernel of CK-Merge)** (§5): CK-CRDT merge discards exactly the within-class loser set; the information loss is a kernel partition.
 - **Theorem 4 (Content Key Properties)** (§6): convergence requires three properties — determinism, peer-publicity, monotonicity-under-update — and violating any one breaks convergence.
-- **Classification** (§7): we categorize IPFS, deduplicating sync systems, collaborative editors, and our knowledge-graph pipeline into the framework.
+- **Theorem 5 (Multi-key Convergence)** (§10): composite keys inherit convergence from their components.
+- **Theorem 6 (Approximate Key Convergence)** (§10): deterministic approximate keys converge; non-deterministic ones fail.
+- **Theorem 7 (Adaptive Key Convergence)** (§10): keys that evolve over time converge iff the migration graph is acyclic and deterministic.
+- **Theorem 8 (Delta-CRDT Composition)** (§10): CK-CRDTs compose with delta-CRDTs iff the delta computation is stratified.
+- **Classification** (§7): we categorize IPFS, Git, deduplicating sync systems, collaborative editors, and our knowledge-graph pipeline into the framework.
 
 ---
 
@@ -114,8 +118,6 @@ $$M_{\text{CK}}(O) = \{\rho(C_k) : k \in \kappa(O)\}$$
 
 **Corollary 2.** In our pipeline, the orphan guard (`crdt_projection.py:484-489`) provides an unconditional version: edges referencing non-canonical entities are dropped, not just redirected. This is strictly stronger than Theorem 2 requires.
 
-**Corollary 2.** In our pipeline, the orphan guard (`crdt_projection.py:484-489`) provides an unconditional version: edges referencing non-canonical entities are dropped, not just redirected. This is strictly stronger than Theorem 2 requires.
-
 ---
 
 ## 5. Theorem 3: Kernel of CK-Merge
@@ -160,7 +162,7 @@ We prove the contrapositive: if convergence holds, then (K1)–(K3) hold. Equiva
 
 *Violating (K3) breaks convergence.* Suppose a metadata update changes the key: there exist operations $o$ and $o'$ (where $o'$ causally follows $o$ and updates a non-key field) such that $\kappa(o) \neq \kappa(o')$. Peer A receives $o$ and computes class $\kappa(o)$. Peer B receives $o'$ first (before $o$), computes class $\kappa(o')$. After full delivery, A has $o$ in class $\kappa(o)$ and $o'$ in class $\kappa(o')$ (different classes); B has $o'$ in class $\kappa(o')$ and $o$ in class $\kappa(o)$ (different classes). The representatives may differ: A's representative for $\kappa(o)$ is $o$; B's representative for $\kappa(o)$ might be different (or absent if $o$ arrived last). The partition is not stable under the CRDT's own update rule. $\square$
 
-**Connection to the vv_sum corrigendum.** Our earlier paper corrected vv_sum → vv_dominates for edge merge. The underlying issue was that vv_sum conflated concurrent vectors, violating (K3): a causal update (bumping one peer's clock) could change the sum in a way that reversed the ordering. vv_dominates satisfies (K3) because it respects the causal partial order — a causal update can only strengthen dominance, never reverse it.
+**Connection to the vv_sum corrigendum.** Sadhu [21] corrected vv_sum → vv_dominates for edge merge. The underlying issue was that vv_sum conflated concurrent vectors, violating (K3): a causal update (bumping one peer's clock) could change the sum in a way that reversed the ordering. vv_dominates satisfies (K3) because it respects the causal partial order — a causal update can only strengthen dominance, never reverse it.
 
 ---
 
@@ -233,21 +235,23 @@ This paper generalizes the three-phase knowledge-graph projection pipeline descr
 ### 9.3 Limitations
 
 - **Description-dependent disambiguation:** The content key distinguishes entities only when their content fields differ. Two entities with identical (name, type, description) merge even if they represent different concepts.
-- **Key immutability:** The key is computed at inception and never recomputed. This is correct for entity identity but may not suit evolving content.
-- **Single-key classification:** The framework assumes one key function per CK-CRDT. Multi-key classification (grouping by multiple keys) is a natural extension.
+- **Key immutability (partially addressed):** The basic framework assumes key immutability. Theorem 7 extends this to adaptive keys, but requires the migration graph to be acyclic — cycles break convergence.
+- **Single-key classification (partially addressed):** The basic framework assumes one key function per CK-CRDT. Theorem 5 extends this to composite keys, but each component must satisfy (K1)–(K3) individually.
 
-### 9.4 Open Questions
+### 9.4 Resolved Questions (see §10)
 
-1. **Multi-key CK-CRDTs.** Can the framework extend to multiple content keys (e.g., grouping by (name, type) first, then by description)? What convergence properties hold?
-2. **Adaptive keys.** If the content key changes over time (e.g., after an enrichment cycle), how does this affect convergence? The current framework assumes key immutability.
-3. **Probabilistic content keys.** What if the content key is approximate (e.g., Levenshtein distance < threshold) rather than exact? The framework assumes deterministic keys; relaxing this would connect to fuzzy record linkage.
-4. **Composition with delta-CRDTs.** How do CK-CRDTs compose with delta-state CRDTs (Loro, Automerge)? The current framework addresses state-based and op-based composition but not delta-based.
+All four questions raised in the initial draft have been resolved:
+
+1. **Multi-key CK-CRDTs.** Resolved by Theorem 5: composite keys inherit (K1)–(K3) from their components.
+2. **Adaptive keys.** Resolved by Theorem 7: keys that evolve over time converge iff the migration graph is acyclic and deterministic.
+3. **Probabilistic content keys.** Resolved by Theorem 6: deterministic approximate keys converge; non-deterministic ones fail by (K1) violation.
+4. **Composition with delta-CRDTs.** Resolved by Theorem 8: CK-CRDTs compose with delta-CRDTs iff the delta computation is stratified.
 
 ---
 
 ## 10. Extensions
 
-We resolve two of the four open questions from §9.4.
+We resolve all four open questions from §9.4.
 
 **Theorem 5 (Multi-key CK-CRDTs).** Let $\kappa' = (\kappa_1, \kappa_2)$ be a composite content key where $\kappa_1 : O \to K_1$ and $\kappa_2 : O \to K_2$ are component keys. If each $\kappa_i$ satisfies (K1)–(K3) individually, then $\kappa'$ satisfies (K1)–(K3) and the CK-CRDT $(\kappa', \rho)$ converges.
 
