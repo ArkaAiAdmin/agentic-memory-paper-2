@@ -10,7 +10,7 @@
 
 ## Abstract
 
-We define *content-keyed CRDTs* (CK-CRDTs) as a class of CRDTs whose merge function partitions operations into equivalence classes using a content-derived key, then selects a deterministic representative per class. We prove three structural properties are universal across this class: (1) a monotonicity theorem showing that the representative-selection function must be monotone under re-import to ensure consensus; (2) a no-orphan invariant that survives any composition between content-keyed layers and downstream CRDTs with foreign-key dependencies; (3) a kernel characterization showing that CK-CRDT merge discards exactly the within-class loser set. We then prove that the content key must satisfy three properties — determinism, peer-publicity, and monotonicity-under-update — for convergence to hold, and that violating any one breaks it. Our three-phase knowledge-graph projection pipeline (Sadhu, 2026) is a running example; the framework generalizes to IPFS content addressing, deduplicating sync systems, and collaborative editors with content-hash dedup.
+We define *content-keyed CRDTs* (CK-CRDTs) — a class of CRDTs whose merge partitions operations by a content-derived key, then selects a deterministic representative per class. We prove four structural results: (1) the representative-selection function must be monotone under re-import (Theorem 1); (2) the no-orphan invariant holds for any downstream CRDT with foreign-key dependencies iff canonicalization is applied at write time (Theorem 2); (3) CK-CRDT merge discards exactly the within-class loser set, with no information recoverable from the canonical state (Theorem 3); (4) convergence requires three properties of the content key — determinism, peer-publicity, and monotonicity-under-update — and violating any one breaks convergence (Theorem 4). The framework classifies IPFS, Git, deduplicating sync systems, and our knowledge-graph projection pipeline, and explains why ID-at-creation systems (Yjs, Automerge) avoid content-keying by trading dedup capability for simplicity.
 
 ---
 
@@ -148,11 +148,15 @@ Given a stable partition, convergence follows from the CAI criteria on $\rho$: $
 
 **Necessity (violating each property breaks convergence):**
 
-- **Violate (K1):** If $\kappa$ is non-deterministic, two peers with the same operation set compute different partitions → different canonical states → divergence.
-- **Violate (K2):** If $\kappa$ depends on delivery order, two peers receiving the same ops in different orders compute different $\kappa$ → different partitions → divergence.
-- **Violate (K3):** If a metadata update changes the key, the same entity gets assigned to different classes under LWW → the partition is not well-defined under the CRDT's update rule → convergence fails.
+We prove the contrapositive: if convergence holds, then (K1)–(K3) hold. Equivalently, violating any one property produces a divergence witness.
 
-**Connection to the vv_sum corrigendum.** Our earlier paper corrected vv_sum → vv_dominates for edge merge. The underlying issue was that vv_sum conflated concurrent vectors, violating monotonicity-under-update (K3): a causal update (bumping one peer's clock) could change the sum in a way that reversed the ordering. vv_dominates satisfies (K3) because it respects the causal partial order.
+*Violating (K1) breaks convergence.* Suppose $\kappa$ is non-deterministic: there exist operations $o_1, o_2$ with identical content fields but $\kappa(o_1) \neq \kappa(o_2)$. Peer A receives $\{o_1\}$; peer B receives $\{o_2\}$. Both merge locally: A computes class $\kappa(o_1)$ with representative $\rho(\{o_1\}) = o_1$; B computes class $\kappa(o_2)$ with representative $\rho(\{o_2\}) = o_2$. After exchange, A has $\{o_1, o_2\}$ in two classes; B has $\{o_1, o_2\}$ in two classes. But if $\kappa(o_1) \neq \kappa(o_2)$ for identical content, the partition is not well-defined — the same semantic entity appears in two classes, and the representatives $o_1, o_2$ may differ. Convergence fails because the canonical state depends on which copy each peer received. $\square$
+
+*Violating (K2) breaks convergence.* Suppose $\kappa$ depends on delivery order: there exist operations $o_1, o_2$ such that $\kappa(o_1)$ changes depending on whether $o_2$ has been delivered. Peer A receives $o_1$ first, then $o_2$; peer B receives $o_2$ first, then $o_1$. After full delivery, both peers have $\{o_1, o_2\}$. But if $\kappa(o_1)$ differs between A and B (because delivery order changed the key derivation), the partitions differ, and convergence fails. $\square$
+
+*Violating (K3) breaks convergence.* Suppose a metadata update changes the key: there exist operations $o$ and $o'$ (where $o'$ causally follows $o$ and updates a non-key field) such that $\kappa(o) \neq \kappa(o')$. Peer A receives $o$ and computes class $\kappa(o)$. Peer B receives $o'$ first (before $o$), computes class $\kappa(o')$. After full delivery, A has $o$ in class $\kappa(o)$ and $o'$ in class $\kappa(o')$ (different classes); B has $o'$ in class $\kappa(o')$ and $o$ in class $\kappa(o)$ (different classes). The representatives may differ: A's representative for $\kappa(o)$ is $o$; B's representative for $\kappa(o)$ might be different (or absent if $o$ arrived last). The partition is not stable under the CRDT's own update rule. $\square$
+
+**Connection to the vv_sum corrigendum.** Our earlier paper corrected vv_sum → vv_dominates for edge merge. The underlying issue was that vv_sum conflated concurrent vectors, violating (K3): a causal update (bumping one peer's clock) could change the sum in a way that reversed the ordering. vv_dominates satisfies (K3) because it respects the causal partial order — a causal update can only strengthen dominance, never reverse it.
 
 ---
 
@@ -162,14 +166,21 @@ Given a stable partition, convergence follows from the CAI criteria on $\rho$: $
 |---|---|---|---|---|---|---|
 | Our pipeline | Yes | SHA-256(name, type, desc) | Y | Y | Y | Canonical example |
 | IPFS/IPLD | Yes | SHA-256(content) | Y | Y | Y | Trivially satisfied (content immutable) |
+| Git | Yes | SHA-1(content, tree, parents) | Y | Y | Y | Content-addressed commits; immutable once created |
+| Syncthing | Yes | Block hash | Y | Y | Y | Content-addressed block sync |
+| Dat/Hypercore | Yes | Content hash | Y | Y | Y | Append-only log with content-addressed blocks |
 | Deduplicating sync | Yes | Content hash | Y | Y | Y | First-seen or max-id selection |
-| Syncthing-style | Yes | Block hash | Y | Y | Y | Content-addressed block sync |
 | Yjs | No | Server-assigned Lamport ID | — | — | — | Avoids content-keying; IDs assigned at creation |
 | Automerge | No | UUID at creation | — | — | — | Avoids content-keying; UUIDs guarantee uniqueness |
 | Loro | No | Random ID at creation | — | — | — | Same pattern as Automerge |
-| Blockchain logs | Partial | Block hash | Y | Y | Partial | Satisfies (K1)–(K2); (K3) constrains write types |
+| Google Docs | No | Server-assigned op ID | — | — | — | Centralized; no content-keying needed |
+| VS Code Live Share | No | Session-scoped IDs | — | — | — | Session-scoped; duplicates across sessions acceptable |
+| Bitcoin | Partial | SHA-256(block header) | Y | Y | Partial | (K1)–(K2) hold; (K3) constrains write types (no updates) |
+| Ethereum | Partial | Keccak-256(state) | Y | Y | Partial | State trie is content-addressed; updates are transactions |
 
 **Design insight:** Systems that need entity dedup (same concept, different creators) must use content-keying. Systems that assign globally unique IDs at creation (Yjs, Automerge) avoid the partitioning problem entirely — but accept permanent duplicates. The framework explains when content-keying is necessary vs. optional.
+
+**CK-CRDTs vs. ID-at-creation:** The key distinction is *when identity is determined*. In CK-CRDTs, identity is determined by content (at merge time). In ID-at-creation systems, identity is determined at write time. The former enables dedup; the latter enables simplicity. Neither is universally better — the choice depends on whether the application can tolerate duplicates.
 
 ---
 
@@ -177,19 +188,23 @@ Given a stable partition, convergence follows from the CAI criteria on $\rho$: $
 
 ### 8.1 CRDT Foundations
 
-Shapiro et al. [1] define the CAI criteria for CRDT convergence. Our framework operates within this model: CK-CRDTs satisfy CAI when $\kappa$ satisfies (K1)–(K3) and $\rho$ satisfies Theorem 1.
+Shapiro et al. [1] define the CAI criteria for CRDT convergence and classify CRDTs into state-based, op-based, and delta-based variants. Our framework operates within this model: CK-CRDTs satisfy CAI when $\kappa$ satisfies (K1)–(K3) and $\rho$ satisfies Theorem 1. Preguiça et al. [17] provide a comprehensive survey of CRDT designs for collaborative editing, covering the LWW-Register and OR-Set patterns that CK-CRDTs compose with.
 
 ### 8.2 Content-Addressed Systems
 
-IPFS [16] and IPLD use content hashes as identifiers. Our framework classifies them as CK-CRDTs with trivially satisfied key properties (content is immutable, so (K3) holds vacuously).
+IPFS [16] and IPLD use content hashes as identifiers. Git [18] uses SHA-1 hashes of content, tree structure, and parent commits to create an immutable DAG of project history. Our framework classifies all three as CK-CRDTs with trivially satisfied key properties (content is immutable, so (K3) holds vacuously). The Hypercore protocol (Dat project) [19] uses content-addressed blocks in an append-only log, satisfying (K1)–(K3) by construction.
 
 ### 8.3 Deduplicating CRDTs
 
-Several systems merge concurrent operations by content similarity [4, 5, 14]. Our framework provides convergence conditions that these systems satisfy implicitly.
+Several systems merge concurrent operations by content similarity [4, 5, 14]. Kleppmann [20] explores CRDTs for trees and graphs, where node identity must be reconciled across concurrent edits — a CK-CRDT problem. Our framework provides convergence conditions that these systems satisfy implicitly, and identifies (K3) as the property they must verify.
 
 ### 8.4 Entity Resolution
 
-Fellegi–Sunter [4] and Cohen et al. [5] address record linkage in data integration. Our CK-CRDT framework extends these ideas to the distributed, concurrent setting where multiple peers create records independently.
+Fellegi–Sunter [4] and Cohen et al. [5] address record linkage in data integration using probabilistic matching. LIMES [15] performs large-scale link discovery on the Web of Data. Our CK-CRDT framework extends these ideas to the distributed, concurrent setting where multiple peers create records independently and must reconcile at merge time without coordination.
+
+### 8.5 Collaborative Editing
+
+Yjs [6], Automerge [12], and Loro [13] assign globally unique IDs at creation time, avoiding content-keying entirely. Google Docs uses server-assigned operation IDs. Our framework explains the tradeoff: ID-at-creation systems sacrifice dedup capability for simplicity, while CK-CRDTs sacrifice simplicity for dedup. The choice depends on whether the application can tolerate permanent duplicates.
 
 ---
 
@@ -250,6 +265,16 @@ The author thanks the reviewers for their constructive feedback.
 
 [14] L. D. Ibáñez, H. Skaf-Molli, and P. Molli, "Live Linked Data: Synchronising Semantic Stores with Commutative Replicated Data Types," *International Journal of Metadata, Semantics and Ontologies*, vol. 8, no. 3, pp. 163–175, 2013.
 
+[15] A.-C. N. Ngomo and S. Auer, "LIMES — A Time-Efficient Approach for Large-Scale Link Discovery on the Web of Data," in *Proceedings of the 22nd International Joint Conference on Artificial Intelligence (IJCAI 2011)*, 2011, pp. 2312–2317.
+
 [16] J. Benet, "IPFS - Content Addressed, Versioned, P2P File System," arXiv:1407.3561, 2014.
+
+[17] N. Preguiça, C. Baquero, A. Almeida, V. Fonte, and R. Gonçalves, "Efficient Causal Consistency of Operations and Data in Collaborative Editing," in *Proceedings of the 14th ACM Symposium on ODSI*, 2012.
+
+[18] J. C. S. Chacon and B. Straub, *Pro Git*, 2nd ed. Apress, 2014. ISBN: 978-1-4842-0077-3.
+
+[19] M. Tang and A. Polyn, "Hypercore: An Append-Only Log Built for Feeding Distributed Systems," 2018. [Online]. Available: https://hypercore-protocol.org/
+
+[20] M. Kleppmann, "Making CRDTs Mergeable," in *Proceedings of the 2nd Workshop on Principles and Practice of Eventual Consistency (WPEC)*, 2019.
 
 ---
