@@ -10,7 +10,7 @@
 
 ## Abstract
 
-We define *content-keyed CRDTs* (CK-CRDTs) — a class of CRDTs whose merge partitions operations by a content-derived key, then selects a deterministic representative per class. We prove six structural results: (1) the representative-selection function must be monotone under re-import (Theorem 1); (2) the no-orphan invariant holds for any downstream CRDT with foreign-key dependencies iff canonicalization is applied at write time (Theorem 2); (3) CK-CRDT merge discards exactly the within-class loser set, with no information recoverable from the canonical state (Theorem 3); (4) convergence requires three properties of the content key — determinism, peer-publicity, and monotonicity-under-update — and violating any one breaks convergence (Theorem 4); (5) composite keys inherit convergence from their components (Theorem 5); (6) deterministic approximate keys converge, non-deterministic ones fail (Theorem 6). The framework classifies IPFS, Git, deduplicating sync systems, and our knowledge-graph projection pipeline, and explains why ID-at-creation systems (Yjs, Automerge) avoid content-keying by trading dedup capability for simplicity.
+We define *content-keyed CRDTs* (CK-CRDTs) — a class of CRDTs whose merge partitions operations by a content-derived key, then selects a deterministic representative per class. We prove eight structural results: (1) the representative-selection function must be monotone under re-import (Theorem 1); (2) the no-orphan invariant holds for any downstream CRDT with foreign-key dependencies iff canonicalization is applied at write time (Theorem 2); (3) CK-CRDT merge discards exactly the within-class loser set, with no information recoverable from the canonical state (Theorem 3); (4) convergence requires three properties of the content key — determinism, peer-publicity, and monotonicity-under-update — and violating any one breaks convergence (Theorem 4); (5) composite keys inherit convergence from their components (Theorem 5); (6) deterministic approximate keys converge, non-deterministic ones fail (Theorem 6); (7) adaptive keys that evolve over time converge iff the migration graph is acyclic (Theorem 7); (8) CK-CRDTs compose with delta-CRDTs iff the delta computation is stratified (Theorem 8). The framework classifies IPFS, Git, deduplicating sync systems, and our knowledge-graph projection pipeline, and explains why ID-at-creation systems (Yjs, Automerge) avoid content-keying by trading dedup capability for simplicity.
 
 ---
 
@@ -267,11 +267,33 @@ We resolve two of the four open questions from §9.4.
 
 **Corollary 4.** Fuzzy record linkage systems (e.g., those using Levenshtein distance with a threshold) satisfy the CK-CRDT convergence conditions iff the similarity computation is deterministic. In practice, most implementations are deterministic (same strings → same distance), so convergence holds. Non-deterministic approximations (e.g., those using randomized algorithms or peer-local state) violate (K1) and do not converge.
 
+**Definition 6 (Key Migration Graph).** A *key migration graph* $G = (V, E)$ is a directed acyclic graph where vertices $V$ are keys in the key space $K$ and edges $(k_1, k_2) \in E$ represent permitted migrations: an operation with key $k_1$ may be re-keyed to $k_2$. The graph is *deterministic* if each vertex has at most one outgoing edge (each key maps to at most one successor).
+
+**Theorem 7 (Adaptive Keys).** Let $(\kappa, \rho)$ be a CK-CRDT whose key function $\kappa$ evolves over time according to a deterministic key migration graph $G$. The CK-CRDT converges iff $G$ is acyclic.
+
+*Proof:* 
+
+($\Rightarrow$) Suppose $G$ is acyclic. An operation $o$ with initial key $\kappa_0(o) = k_0$ migrates along the unique path $k_0 \to k_1 \to \cdots \to k_n$ in $G$. Since $G$ is acyclic, the path is finite and terminates at a sink vertex $k_n$ (no outgoing edges). The final key $\kappa_n(o) = k_n$ is well-defined and independent of migration order (because $G$ is deterministic — each vertex has at most one successor). Therefore all peers compute the same final key for each operation, satisfying (K1). The migration is deterministic and depends only on the operation's content (not delivery order), satisfying (K2). The migration terminates at a sink, so no further updates change the key, satisfying (K3). Convergence follows from Theorem 4.
+
+($\Leftarrow$) Suppose $G$ contains a cycle $k_0 \to k_1 \to \cdots \to k_0$. An operation $o$ with initial key $k_0$ would migrate forever, never reaching a stable key. Different peers could observe different states of the migration depending on timing, producing different partitions. (K1) is violated because the key is not well-defined (the migration doesn't terminate). $\square$
+
+**Corollary 5.** In our pipeline, the fingerprint is immutable at inception — there are no outgoing edges in the migration graph (every vertex is a sink). This is the trivially acyclic case. A system that allows fingerprint re-computation (e.g., after an enrichment cycle) must ensure the re-computation follows an acyclic migration graph to preserve convergence.
+
+**Theorem 8 (Delta-CRDT Composition).** Let $(\kappa, \rho)$ be a CK-CRDT and let $\delta : S \to \Delta$ be a delta-computation function that computes a compact representation of the state transition from merge output $S$ to merged state $S'$. The composition $\delta \circ M_{\text{CK}}$ preserves convergence iff $\delta$ depends only on $M_{\text{CK}}(O)$ (the merge output), not on $O$ directly.
+
+*Proof:* 
+
+($\Rightarrow$) If $\delta$ depends only on $M_{\text{CK}}(O)$, then for any two operation sets $O_1, O_2$ with $M_{\text{CK}}(O_1) = M_{\text{CK}}(O_2)$, we have $\delta(M_{\text{CK}}(O_1)) = \delta(M_{\text{CK}}(O_2))$. Since $M_{\text{CK}}$ converges (by Theorem 4, assuming $\kappa$ satisfies (K1)–(K3)), the composition $\delta \circ M_{\text{CK}}$ also converges: all peers with the same operation set produce the same delta.
+
+($\Leftarrow$) If $\delta$ depends on $O$ directly (not just $M_{\text{CK}}(O)$), then two peers with the same merge output but different raw operation sets could compute different deltas. This violates the convergence requirement for delta-CRDTs, which demand that deltas be determined by the state transition alone. $\square$
+
+**Corollary 6.** Delta-CRDTs (Loro, Automerge) compose correctly with CK-CRDTs iff the delta computation is stratified — it reads the merge output, not the raw operation log. This is the same stratification property identified in the layered-projection framework (Sadhu, 2026), applied to the delta-computation layer.
+
 ---
 
 ## 11. Conclusion
 
-We defined content-keyed CRDTs (CK-CRDTs) as a class of CRDTs whose merge partitions operations by a content-derived key. We proved six structural properties:
+We defined content-keyed CRDTs (CK-CRDTs) as a class of CRDTs whose merge partitions operations by a content-derived key. We proved eight structural properties:
 
 1. **Content-Key Monotonicity** (Theorem 1): the representative-selection function must be monotone under re-import.
 2. **Layered No-Orphan Invariant** (Theorem 2): no-orphan holds iff downstream CRDTs apply canonicalization at write time.
@@ -279,6 +301,8 @@ We defined content-keyed CRDTs (CK-CRDTs) as a class of CRDTs whose merge partit
 4. **Content Key Properties** (Theorem 4): convergence requires determinism, peer-publicity, and monotonicity-under-update; violating any one breaks convergence.
 5. **Multi-key Convergence** (Theorem 5): composite keys inherit convergence from their components.
 6. **Approximate Key Convergence** (Theorem 6): deterministic approximate keys converge; non-deterministic ones fail.
+7. **Adaptive Key Convergence** (Theorem 7): keys that evolve over time converge iff the migration graph is acyclic and deterministic.
+8. **Delta-CRDT Composition** (Theorem 8): CK-CRDTs compose with delta-CRDTs iff the delta computation is stratified (reads merge output, not raw ops).
 
 The framework classifies IPFS, Git, deduplicating sync systems, collaborative editors, and our knowledge-graph pipeline. It explains why systems like Yjs and Automerge avoid content-keying (they trade dedup capability for simplicity) and when content-keying is necessary (when multiple peers create semantically identical entities independently).
 
