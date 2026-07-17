@@ -92,7 +92,7 @@ $$M_{\text{CK}}(O) = \{\rho(C_k) : k \in \kappa(O)\}$$
 
 ($\Rightarrow$) Suppose $\rho$ is monotone. Let $c = \rho(C)$. Then $C \cup \{c\} \supseteq C$, so by monotonicity $\rho(C \cup \{c\}) \geq \rho(C) = c$. But $\rho(C \cup \{c\}) \in C \cup \{c\}$, and $c$ is the maximum element of $C$ (since $\rho(C) = c$ and $\rho$ selects from $C$). So $\rho(C \cup \{c\}) = c$. $\square$
 
-($\Leftarrow$) Suppose $\rho$ is content-stable: $\rho(C \cup \{c\}) = c$ for all $c = \rho(C)$. We need to show monotonicity. Let $C' \supseteq C$. If $\rho(C') = \rho(C)$, monotonicity holds trivially. If $\rho(C') \neq \rho(C)$, then $\rho(C') \in C' \setminus C$ (by content-stability, $\rho(C) \in C$ is not displaced). Since $\rho(C') \in C'$ and $\rho(C') > \rho(C)$ in the class ordering, monotonicity holds. $\square$
+($\Leftarrow$) Suppose $\rho$ is content-stable: $\rho(C \cup \{c\}) = c$ for all $c = \rho(C)$. We need to show monotonicity. Let $C' \supseteq C$. We must show $\rho(C') \geq \rho(C)$. Suppose for contradiction that $\rho(C') < \rho(C) = c$. Since $C' \supseteq C$, we have $c \in C'$. By content-stability applied to $C'$, $\rho(C' \cup \{c\}) = c$. But $C' \cup \{c\} = C'$ (since $c \in C'$), so $\rho(C') = c$. This contradicts $\rho(C') < c$. Therefore $\rho(C') \geq \rho(C)$. $\square$
 
 **Corollary 1.** In our pipeline, $\rho(C) = \max(C)$ (highest entity ID). This satisfies monotonicity: $C' \supseteq C \implies \max(C') \geq \max(C)$. The test `TestMigrationPreservesCanonical` validates this empirically.
 
@@ -102,13 +102,17 @@ $$M_{\text{CK}}(O) = \{\rho(C_k) : k \in \kappa(O)\}$$
 
 **Definition 4 (Foreign-Key Dependency).** A downstream CRDT $M_{\text{down}}$ has a *foreign-key dependency* on an upstream CK-CRDT $M_{\text{CK}}$ if $M_{\text{down}}$'s operations reference entity IDs produced by $M_{\text{CK}}$.
 
-**Theorem 2 (Layered No-Orphan Invariant).** Let $M_{\text{CK}}$ be a CK-CRDT producing canonical entity IDs, and let $M_{\text{down}}$ be a downstream CRDT with foreign-key dependencies on those IDs. The no-orphan invariant — every edge endpoint in $M_{\text{down}}$'s output references an entity in $M_{\text{CK}}$'s output — holds iff $M_{\text{down}}$ applies canonicalization (mapping loser IDs to winner IDs via the redirect map $R$) at write time.
+**Definition 5 (Redirect Map).** Given a CK-CRDT $M_{\text{CK}}$ with representative function $\rho$, the *redirect map* $R: O \to O$ maps each loser operation to its class representative: $R(o) = \rho(\kappa(o))$ for all $o \notin W(O)$, and $R(o) = o$ for all $o \in W(O)$.
+
+**Theorem 2 (Layered No-Orphan Invariant).** Let $M_{\text{CK}}$ be a CK-CRDT producing canonical entity IDs, and let $M_{\text{down}}$ be a downstream CRDT with foreign-key dependencies on those IDs. The no-orphan invariant — every edge endpoint in $M_{\text{down}}$'s output references an entity in $M_{\text{CK}}$'s output — holds iff $M_{\text{down}}$ applies $R$ (the redirect map from Definition 5) at write time.
 
 *Proof:*
 
-($\Rightarrow$) If canonicalization is applied at write time, then every edge endpoint is mapped through $R$ before writing. Since $R$ maps all loser IDs to winners, and winners are in $M_{\text{CK}}$'s output, every endpoint references a canonical entity. The invariant holds.
+($\Rightarrow$) If $R$ is applied at write time, then for every edge endpoint $e$ in $M_{\text{down}}$'s output, $e$ has been mapped through $R$. If $e$ was a loser ID $l$, then $R(l) = \rho(\kappa(l))$, which is a class representative and hence in $M_{\text{CK}}$'s output. If $e$ was already a winner ID, $R(e) = e$ and $e$ is in $M_{\text{CK}}$'s output. In both cases, the endpoint references a canonical entity. $\square$
 
-($\Leftarrow$) If canonicalization is not applied at write time, then an edge referencing a loser ID $l$ (where $l \notin M_{\text{CK}}$'s output) is written unchanged. Since $l$ is not in $M_{\text{CK}}$'s output, the invariant is violated. $\square$
+($\Leftarrow$) If $R$ is not applied at write time, then an edge referencing a loser ID $l$ (where $l \notin M_{\text{CK}}$'s output) is written unchanged. Since $l \notin M_{\text{CK}}$'s output, the invariant is violated. $\square$
+
+**Corollary 2.** In our pipeline, the orphan guard (`crdt_projection.py:484-489`) provides an unconditional version: edges referencing non-canonical entities are dropped, not just redirected. This is strictly stronger than Theorem 2 requires.
 
 **Corollary 2.** In our pipeline, the orphan guard (`crdt_projection.py:484-489`) provides an unconditional version: edges referencing non-canonical entities are dropped, not just redirected. This is strictly stronger than Theorem 2 requires.
 
@@ -120,9 +124,9 @@ $$M_{\text{CK}}(O) = \{\rho(C_k) : k \in \kappa(O)\}$$
 
 *Proof:* 
 
-($\Rightarrow$) If $M_{\text{CK}}(O_1) = M_{\text{CK}}(O_2)$, then for each key $k$ in $\kappa(O_1) \cap \kappa(O_2)$, the representative must be the same: $\rho(C_k \cap O_1) = \rho(C_k \cap O_2)$. If a key $k$ appears in $O_1$ but not $O_2$, the class $C_k \cap O_2$ is empty and produces no representative — this is consistent with $M_{\text{CK}}(O_1)$ having an extra element, contradicting $M_{\text{CK}}(O_1) = M_{\text{CK}}(O_2)$. So the key sets must be identical, and the representatives must match.
+($\Rightarrow$) If $M_{\text{CK}}(O_1) = M_{\text{CK}}(O_2)$, then the output sets are equal: $\{\rho(C_k \cap O_1) : k \in \kappa(O_1)\} = \{\rho(C_k \cap O_2) : k \in \kappa(O_2)\}$. For any key $k \in \kappa(O_1) \cap \kappa(O_2)$, the representative $\rho(C_k \cap O_1)$ appears in both output sets, and since $\rho$ is deterministic and $\rho(C_k \cap O_1) \in C_k$, the only element of the output set in class $C_k$ is $\rho(C_k \cap O_1)$. Therefore $\rho(C_k \cap O_1) = \rho(C_k \cap O_2)$. For keys in $\kappa(O_1) \setminus \kappa(O_2)$, the class $C_k \cap O_2$ is empty and produces no representative — but then $M_{\text{CK}}(O_1)$ has an element not in $M_{\text{CK}}(O_2)$, contradicting equality. So $\kappa(O_1) = \kappa(O_2)$ and all representatives match.
 
-($\Leftarrow$) If for every key $k$, the representative is the same, then $M_{\text{CK}}(O_1)$ and $M_{\text{CK}}(O_2)$ produce identical representative sets. $\square$
+($\Leftarrow$) If for every key $k$, the representative is the same, then $M_{\text{CK}}(O_1)$ and $M_{\text{CK}}(O_2)$ produce identical representative sets by definition of $M_{\text{CK}}$. $\square$
 
 **Information-loss corollary.** The information discarded by CK-CRDT merge is exactly the within-class loser set $O \setminus W(O)$, where $W(O) = \{\rho(C_k) : k \in \kappa(O)\}$. This is not recoverable from the canonical state alone: for any class $C$, any subset $C' \subseteq C$ may be designated losers and the merge output is invariant.
 
@@ -222,11 +226,22 @@ Content-keying is optional when:
 - Duplicates are acceptable (collaborative whiteboards, append-only logs)
 - A higher-level reconciliation step handles dedup (data integration pipelines)
 
-### 9.2 Limitations
+### 9.2 Connection to Prior Work
+
+This paper generalizes the three-phase knowledge-graph projection pipeline described in Sadhu [21]. That paper proves convergence, no-orphan invariants, and lossless projection for a specific CK-CRDT instance. The present framework shows that these results are consequences of the CK-CRDT class properties, not specific to the pipeline. Theorem 1 generalizes Theorem 3 of [21] (Canonical-Id Monotonicity); Theorem 2 generalizes Corollary 1 of [21] (unconditional no-orphan); Theorem 3 generalizes Theorem 4 of [21] (lossless projection up to kernel); Theorem 4 is new, providing the convergence conditions that [21] assumes but does not state.
+
+### 9.3 Limitations
 
 - **Description-dependent disambiguation:** The content key distinguishes entities only when their content fields differ. Two entities with identical (name, type, description) merge even if they represent different concepts.
 - **Key immutability:** The key is computed at inception and never recomputed. This is correct for entity identity but may not suit evolving content.
 - **Single-key classification:** The framework assumes one key function per CK-CRDT. Multi-key classification (grouping by multiple keys) is a natural extension.
+
+### 9.4 Open Questions
+
+1. **Multi-key CK-CRDTs.** Can the framework extend to multiple content keys (e.g., grouping by (name, type) first, then by description)? What convergence properties hold?
+2. **Adaptive keys.** If the content key changes over time (e.g., after an enrichment cycle), how does this affect convergence? The current framework assumes key immutability.
+3. **Probabilistic content keys.** What if the content key is approximate (e.g., Levenshtein distance < threshold) rather than exact? The framework assumes deterministic keys; relaxing this would connect to fuzzy record linkage.
+4. **Composition with delta-CRDTs.** How do CK-CRDTs compose with delta-state CRDTs (Loro, Automerge)? The current framework addresses state-based and op-based composition but not delta-based.
 
 ---
 
@@ -276,5 +291,7 @@ The author thanks the reviewers for their constructive feedback.
 [19] M. Tang and A. Polyn, "Hypercore: An Append-Only Log Built for Feeding Distributed Systems," 2018. [Online]. Available: https://hypercore-protocol.org/
 
 [20] M. Kleppmann, "Making CRDTs Mergeable," in *Proceedings of the 2nd Workshop on Principles and Practice of Eventual Consistency (WPEC)*, 2019.
+
+[21] S. Sadhu, "Conflict-Free Knowledge Graph Projection: A Three-Phase CRDT Pipeline for Multi-Agent Memory Systems," preprint, 2026.
 
 ---
