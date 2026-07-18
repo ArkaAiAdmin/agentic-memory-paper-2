@@ -523,26 +523,31 @@ def run_all_tests():
         ))
     results.append(measure_convergence(conn, f"Large-scale ({N} ops, {K} keys)", big_eops, big_eops_edge))
 
-    # Scenario 5: 100k ops with collisions (exercises dedup at scale)
+    # Scenario 5: 100k ops with cross-eid collisions (exercises dedup at scale)
+    # K5 distinct entities, each created by N5/K5 different peers (same content)
+    # → N5 ops produce K5 canonical entities, with (N5 - K5) redirects
     N5 = 100_000
-    K5 = 1000  # distinct entities
+    K5 = 1000  # distinct entities (each with same name, type, desc across peers)
     big_eops5 = []
     big_eops5_edge = []
     for i in range(N5):
-        eid = (i % K5) + 1  # cycle through K5 entity IDs → collisions
+        group = i % K5  # which entity (0..K5-1)
+        peer = i // K5   # which peer created it (0..N5/K5-1)
+        eid = group * 1000 + peer  # unique ID per peer per entity
+        # All ops in same group share content → cross-eid collisions
         big_eops5.append(EntityOp(
-            eid, f"agent_{i % 10}", "add",
-            {f"agent_{i % 10}": i // K5 + 1},
-            f"entity_{eid}", "type", "shared", "",
+            eid, f"agent_{peer % 10}", "add",
+            {f"agent_{peer % 10}": peer // 10 + 1},
+            f"entity_{group}", "type", "shared", "",
             float(i),
         ))
     for i in range(N5 // 10):
         big_eops5_edge.append(EdgeOp(
-            i, (i % K5) + 1, ((i + 1) % K5) + 1,
+            i, (i % K5) * 1000, ((i + 1) % K5) * 1000,
             "related_to", 1.0, None, f"agent_{i % 10}",
             {f"agent_{i % 10}": i // K5 + 1}, float(i),
         ))
-    results.append(measure_convergence(conn, f"100k ops ({K5} keys, collisions)", big_eops5, big_eops5_edge))
+    results.append(measure_convergence(conn, f"100k ops ({K5} keys, cross-eid dedup)", big_eops5, big_eops5_edge))
 
     # Print results
     print("=" * 80)
