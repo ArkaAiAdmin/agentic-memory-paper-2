@@ -62,7 +62,7 @@ This paper is the theoretical companion to Sadhu [14], which provides the refere
 
 ### 1.4.1 CRDT Foundations
 
-Shapiro et al. [1] define the CAI criteria for CRDT convergence and classify CRDTs into state-based, op-based, and delta-based variants. Our framework operates within this model: CK-CRDTs satisfy CAI when $\kappa$ satisfies (K1)–(K3) and $\rho$ satisfies Theorem 1. Preguiça et al. [10] provide a comprehensive survey of CRDT designs for collaborative editing, covering the LWW-Register and OR-Set patterns that CK-CRDTs compose with. Baquero et al. [15] introduce delta-CRDTs, compact state-synchronization representations that our Theorem 8 addresses.
+Shapiro et al. [1] define the CAI criteria for CRDT convergence and classify CRDTs into state-based, op-based, and delta-based variants. Our framework operates within this model: CK-CRDTs satisfy CAI when $\kappa$ satisfies (K1)–(K3) and $\rho$ satisfies Theorem 1. Preguiça et al. [10] address fault-tolerant geo-replication with causal consistency, demonstrating that CRDT-based systems can maintain consistency across wide-area networks — a setting where CK-CRDTs must also operate. Baquero et al. [15] introduce delta-CRDTs, compact state-synchronization representations that our Theorem 8 addresses.
 
 ### 1.4.2 Content-Addressed Systems
 
@@ -70,7 +70,7 @@ IPFS [9] and IPLD use content hashes as identifiers. Git [11] uses SHA-1 hashes 
 
 ### 1.4.3 Deduplicating CRDTs
 
-Several systems merge concurrent operations by content similarity [2, 3, 7]. Kleppmann [13] explores CRDTs for trees and graphs, where node identity must be reconciled across concurrent edits — a CK-CRDT problem. Our framework provides convergence conditions that these systems satisfy implicitly, and identifies non-key invariance (K3) as the property they must verify.
+Several systems merge concurrent operations by content similarity [2, 3, 7]. Kleppmann [13] addresses Byzantine fault tolerance in CRDTs, showing that content-keying must be verified against adversarial peers — a concern our adversarial test suite (§8.3) directly addresses. Our framework provides convergence conditions that these systems satisfy implicitly, and identifies non-key invariance (K3) as the property they must verify.
 
 ### 1.4.4 Entity Resolution
 
@@ -398,19 +398,19 @@ The framework classifies content-addressed systems, version control, deduplicati
 
 [6] Loro Contributors, "Loro: A CRDT Framework for Collaborative Editing with Delta State," 2023–present. [Online]. Available: https://github.com/loro-dev/loro
 
-[7] L. D. Ibáñez, H. Skaf-Molli, and P. Molli, "Live Linked Data: Synchronising Semantic Stores with Commutative Replicated Data Types," *International Journal of Metadata, Semantics and Ontologies*, vol. 8, no. 3, pp. 163–175, 2013.
+[7] L. D. Ibáñez, H. S. Molli, P. Molli, and O. Corby, "Live Linked Data: Synchronising Semantic Stores with Commutative Replicated Data Types," *International Journal of Metadata, Semantics and Ontologies*, vol. 8, no. 2, art. 119, 2013.
 
 [8] A.-C. N. Ngomo and S. Auer, "LIMES — A Time-Efficient Approach for Large-Scale Link Discovery on the Web of Data," in *Proceedings of IJCAI 2011*, 2011, pp. 2312–2317.
 
 [9] J. Benet, "IPFS - Content Addressed, Versioned, P2P File System," arXiv:1407.3561, 2014.
 
-[10] N. Preguiça, C. Baquero, A. Almeida, V. Fonte, and R. Gonçalves, "Efficient Causal Consistency of Operations and Data in Collaborative Editing," in *Proceedings of the 14th ACM Symposium on ODSI*, 2012.
+[10] N. Preguiça, C. Baquero, M. Shapiro, and S. Duarte, "SwiftCloud: Fault-tolerant Geo-replication Integrated All the Way to the Client Machine," in *Proceedings of the 14th International Symposium on Stabilization, Safety, and Security of Distributed Systems (SSS)*, 2013, pp. 354–369.
 
 [11] S. Chacon and B. Straub, *Pro Git*, 2nd ed. Apress, 2014.
 
-[12] M. Tang and A. Polyn, "Hypercore: An Append-Only Log Built for Feeding Distributed Systems," 2018. [Online]. Available: https://hypercore-protocol.org/
+[12] M. Buus, "Hypercore: An Append-only Log Built for Feeding Distributed Systems," 2018. [Online]. Available: https://hypercore-protocol.org/
 
-[13] M. Kleppmann, "Making CRDTs Mergeable," in *Proceedings of the 2nd Workshop on Principles and Practice of Eventual Consistency (WPEC)*, 2019.
+[13] M. Kleppmann, "Making CRDTs Byzantine Fault Tolerant," in *Proceedings of the 9th Workshop on Principles and Practice of Consistency for Distributed Data (PaPoC)*, 2022.
 
 [14] S. Sadhu, "Conflict-Free Knowledge Graph Projection: A Three-Phase CRDT Pipeline for Multi-Agent Memory Systems," preprint, 2026.
 
