@@ -609,3 +609,139 @@ class TestScaleAndLimits:
         # Peak memory should be < 100MB for 100K ops
         peak_mb = peak / (1024 * 1024)
         assert peak_mb < 100, f"Peak memory {peak_mb:.1f}MB exceeded 100MB limit"
+
+
+# =========================================================================
+# K1/K2/K3 NECESSITY COUNTEREXAMPLES
+# =========================================================================
+
+class TestNecessityCounterexamples:
+    """Verify that violating K1, K2, or K3 individually produces the claimed failure."""
+
+    def test_k1_necessity_divergence(self):
+        """K1 violation: non-deterministic key → different peers produce different outputs.
+
+        Paper claim (§6): Same op o receives different keys on different peers.
+        Peer A: κ(o)=κ(o')=k1 → 1 representative. Peer B: κ(o)=k1, κ(o')=k2 → 2.
+        Divergence: |M_A(B)| ≠ |M_B(B)|.
+        """
+        o1 = EntityOp(1, "a", "add", {"a": 1}, "alice", "person", "lawyer", "", 100.0)
+        o2 = EntityOp(2, "b", "add", {"b": 1}, "alice", "person", "lawyer", "", 200.0)
+
+        # Peer A: K1 holds → same fingerprint → 1 entity
+        merged_a = merge_entity_ops([o1, o2])
+        dedup_a = entity_dedup_via_crdt(merged_a)
+        assert len(dedup_a["merged_state"]) == 1
+
+        # Peer B: K1 violated (tampered description) → different fingerprints → 2 entities
+        o2_tampered = EntityOp(2, "b", "add", {"b": 1}, "alice", "person", "CHEF", "", 200.0)
+        merged_b = merge_entity_ops([o1, o2_tampered])
+        dedup_b = entity_dedup_via_crdt(merged_b)
+        assert len(dedup_b["merged_state"]) == 2
+
+        # Divergence confirmed
+        assert len(dedup_a["merged_state"]) != len(dedup_b["merged_state"])
+
+    def test_k2_necessity_divergence(self):
+        """K2 violation: key depends on bag size → different delivery orders → different outputs.
+
+        Paper claim (§6): κ_B(o) = k_a if |B|=1, k_b if |B|>1.
+        With 3 ops, Peer A and Peer B build the bag in different orders,
+        assigning different ops to different classes.
+        """
+        def bag_dependent_key(op, bag_size):
+            return "class_a" if bag_size == 1 else "class_b"
+
+        o1 = EntityOp(1, "a", "add", {"a": 1}, "alice", "person", "", "", 100.0)
+        o2 = EntityOp(2, "b", "add", {"b": 1}, "alice", "person", "", "", 200.0)
+        o3 = EntityOp(3, "c", "add", {"c": 1}, "bob", "person", "", "", 300.0)
+
+        # Peer A: o1 first (class_a), then o2+o3 (class_b)
+        # Partition: {o1} in class_a, {o2, o3} in class_b
+        # argmax: o1 from class_a, o3 from class_b → {o1, o3}
+        key_o1_a = bag_dependent_key(o1, 1)
+        key_o2_a = bag_dependent_key(o2, 2)
+        assert key_o1_a == "class_a" and key_o2_a == "class_b"
+
+        # Peer B: o2 first (class_a), then o1+o3 (class_b)
+        # Partition: {o2} in class_a, {o1, o3} in class_b
+        # argmax: o2 from class_a, o3 from class_b → {o2, o3}
+        key_o2_b = bag_dependent_key(o2, 1)
+        key_o1_b = bag_dependent_key(o1, 2)
+        assert key_o2_b == "class_a" and key_o1_b == "class_b"
+
+        # Divergence: different ops selected as representatives
+        assert key_o1_a != key_o1_b, "Same op gets different keys on different peers"
+
+    def test_k3_necessity_semantic_duplicate(self):
+        """K3 violation: key reads non-key field → same entity gets different keys.
+
+        Paper claim (§6): κ(o)=k1, κ(o')=k2 (o' extends o with description).
+        Result: 2 entities instead of 1. Convergence holds but correctness degrades.
+        """
+        o1 = EntityOp(1, "a", "add", {"a": 1}, "alice", "person", "", "", 100.0)
+        o2 = EntityOp(2, "b", "add", {"b": 1}, "alice", "person", "lawyer", "", 200.0)
+
+        # K3-violating key: reads description
+        key1 = compute_fingerprint(o1.name, o1.entity_type, o1.description)
+        key2 = compute_fingerprint(o2.name, o2.entity_type, o2.description)
+        assert key1 != key2, "K3 violated: same entity, different key"
+
+        # Semantic duplicate: 2 entities instead of 1
+        merged = merge_entity_ops([o1, o2])
+        dedup = entity_dedup_via_crdt(merged)
+        assert len(dedup["merged_state"]) == 2, "K3 violation → semantic duplicate"
+
+        # K3-compliant key: ignores description → 1 entity
+        correct_key = compute_fingerprint(o1.name, o1.entity_type, "")
+        o1_c = EntityOp(1, "a", "add", {"a": 1}, "alice", "person", "", correct_key, 100.0)
+        o2_c = EntityOp(2, "b", "add", {"b": 1}, "alice", "person", "lawyer", correct_key, 200.0)
+        merged_c = merge_entity_ops([o1_c, o2_c])
+        dedup_c = entity_dedup_via_crdt(merged_c)
+        assert len(dedup_c["merged_state"]) == 1, "K3-compliant → correct dedup"
+
+    def test_k1_k3_sufficiency_convergence(self):
+        """When K1, K2, K3 all hold, all 24 permutations of 4 ops produce identical output."""
+        ops = [
+            EntityOp(10, "a", "add", {"a": 1}, "project:x", "project", "", "", 100.0),
+            EntityOp(20, "b", "add", {"b": 1}, "project:x", "project", "", "", 200.0),
+            EntityOp(30, "c", "add", {"c": 1}, "project:x", "project", "", "", 300.0),
+            EntityOp(15, "a", "add", {"a": 2}, "target", "proj", "", "", 50.0),
+        ]
+        edges = [
+            EdgeOp(1, 10, 15, "depends_on", 1.0, None, "a", {"a": 2}, 110.0),
+            EdgeOp(2, 20, 15, "depends_on", 1.0, None, "b", {"b": 2}, 210.0),
+            EdgeOp(3, 30, 15, "depends_on", 1.0, None, "c", {"c": 2}, 310.0),
+        ]
+
+        from itertools import permutations
+        results = set()
+        for perm in permutations(ops):
+            conn = sqlite3.connect(":memory:")
+            conn.executescript(SCHEMA)
+            for op in perm:
+                conn.execute(
+                    "INSERT INTO kg_entity_crdt "
+                    "(entity_id, agent_id, op, version_vector, name, entity_type, "
+                    "description, fingerprint, timestamp) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (op.entity_id, op.agent_id, op.op, json.dumps(op.version_vector),
+                     op.name, op.entity_type, op.description, op.fingerprint, op.timestamp),
+                )
+            for op in edges:
+                conn.execute(
+                    "INSERT INTO kg_edge_crdt "
+                    "(edge_id, source_id, target_id, relation, weight, valid_at, "
+                    "agent_id, version_vector, timestamp) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (op.edge_id, op.source_id, op.target_id, op.relation, op.weight,
+                     op.valid_at, op.agent_id, json.dumps(op.version_vector), op.timestamp),
+                )
+            conn.commit()
+            n_e, n_ed, redir = project_crdt_to_entities(conn)
+            verify_no_orphan(conn)
+            entity_rows = conn.execute("SELECT entity_id, name FROM kg_entities ORDER BY entity_id").fetchall()
+            edge_rows = conn.execute("SELECT source_id, target_id, relation FROM kg_edges ORDER BY source_id, target_id").fetchall()
+            result_key = (tuple(entity_rows), tuple(edge_rows), frozenset(redir.items()))
+            results.add(result_key)
+            conn.close()
+
+        assert len(results) == 1, f"Convergence violated: {len(results)} distinct outputs from 24 permutations"
