@@ -558,8 +558,9 @@ def test_k1_collision_resistance():
 
     # Critical: two ops with same content but different metadata
     # must produce same fingerprint (merge groups them correctly)
-    op_a = EntityOp(1, "peer_a", "add", {"a": 1}, "alice", "person", "lawyer", "", 100.0)
-    op_b = EntityOp(2, "peer_b", "add", {"b": 1}, "alice", "person", "lawyer", "", 200.0)
+    fp_alice = compute_fingerprint("alice", "person", "lawyer")
+    op_a = EntityOp(1, "peer_a", "add", {"a": 1}, "alice", "person", "lawyer", fp_alice, 100.0)
+    op_b = EntityOp(2, "peer_b", "add", {"b": 1}, "alice", "person", "lawyer", fp_alice, 200.0)
     merged = merge_entity_ops([op_a, op_b])
     # Both ops have identical content → same fingerprint
     assert merged[1]["fingerprint"] == merged[2]["fingerprint"], \
