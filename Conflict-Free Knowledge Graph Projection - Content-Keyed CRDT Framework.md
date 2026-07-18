@@ -437,6 +437,59 @@ Automerge uses UUIDs assigned at creation. Agent A creates `{_id: "uuid-a", name
 
 ---
 
+## Appendix B: Cross-Paper Instantiation Map
+
+This appendix shows how Paper 1's three-phase pipeline [14] is a concrete instantiation of Paper 2's abstract CK-CRDT framework. Every claim in Paper 1 maps to a specific theorem or property in Paper 2. This is the "third adopter" test: the framework predicts behavior of a system built independently.
+
+### B.1 Entity-Level Mapping
+
+| Paper 1 (Pipeline) | Paper 2 (Framework) | Mapping |
+|---|---|---|
+| Content key: `SHA-256(name, type, desc)` | $\kappa: \mathcal{O} \to K$ | $\kappa(o) = \text{fingerprint}(o.\text{name}, o.\text{type}, o.\text{desc})$ |
+| `compute_fingerprint()` | K1 (determinism) | Same inputs $\to$ same hash; verified by `test_k1_collision_resistance` |
+| Fingerprint ignores timestamps/peer IDs | K2 (content-locality) | $\kappa(o)$ depends only on $o$'s content fields |
+| Metadata updates don't change fingerprint | K3 (non-key invariance) | Updating `description` after creation doesn't recompute $\kappa$ |
+| LWW per field (vv_dominates + timestamp) | $\rho_k$ (total order) | argmax over (VV dominance, timestamp desc, agent_id asc) |
+| `merge_entity_ops()` | CK-CRDT merge | Partitions by $\kappa$, selects representative via $\rho_k$ |
+| Phase 2: `entity_dedup_via_crdt()` | Representative selection | Groups by fingerprint, picks max(id) per group |
+| Redirect map `{42: 99}` | Kernel of merge (Theorem 3) | Losers are redirected, not deleted; information loss = within-class loser set |
+
+### B.2 Edge-Level Mapping
+
+| Paper 1 (Pipeline) | Paper 2 (Framework) | Mapping |
+|---|---|---|
+| `kg_edge_crdt` operations | Downstream CRDT | Edges reference entities; foreign-key dependency |
+| `resolve_edge_endpoints()` | Theorem 2 (Layered No-Orphan) | Canonicalization at write time prevents orphans |
+| `kg_entity_redirect` table | Durable redirect map | Write-time lookup ensures edges reference canonical IDs |
+| Orphan guard (Phase 3) | Invariant 3 (§4.3) | No edge references a non-canonical entity |
+| `verify_crdt_consistency()` | Defense-in-depth | Post-hoc check (production has write-time prevention) |
+
+### B.3 Convergence Claim Mapping
+
+| Paper 1 Claim | Paper 2 Theorem | How |
+|---|---|---|
+| Pipeline converges regardless of operation order | Theorem 4 (K1-K3 $\to$ convergence) | Fingerprint is deterministic (K1), content-local (K2), non-key invariant (K3) |
+| Concurrent add+remove: add wins | 2P-Set (standard CRDT) | Not a CK-CRDT property; standard CRDT membership semantics |
+| Different descriptions: entities coexist | Theorem 3 (kernel) | Different fingerprints $\to$ different key classes $\to$ no merge |
+| Same descriptions: entities collapse | Theorem 1 (monotonicity) | Same fingerprint $\to$ same key class $\to$ max(id) wins |
+| Redirect applied atomically to all edges | Theorem 2 (no-orphan) | Write-time canonicalization ensures invariant holds at write, not just after sync |
+
+### B.4 What Paper 2 Adds Beyond Paper 1
+
+Paper 1 proves convergence for one specific pipeline. Paper 2 proves convergence for the entire class:
+
+1. **Generality:** Paper 1's results apply to `SHA-256(name, type, desc)`. Paper 2's results apply to any $\kappa$ satisfying K1-K3. A different content key (e.g., `SHA-256(name, type)`) gets the same convergence guarantee for free.
+
+2. **Necessity:** Paper 1 assumes K1-K3 hold but doesn't prove they're necessary. Paper 2 proves K1 is both necessary and sufficient (Theorem 4 + counterexample in §8.3).
+
+3. **Composition:** Paper 1 doesn't address how CK-CRDTs compose with other CRDTs. Paper 2 proves composition with delta-CRDTs (Theorem 8) and multi-key systems (Theorem 5).
+
+4. **Limits:** Paper 1 doesn't identify where the pipeline breaks. Paper 2 identifies three structural failure modes (§8.4): key collisions, cross-class causality, and adaptive key cycles.
+
+5. **Classification:** Paper 1 describes one system. Paper 2 classifies Docker, IPFS, Git, Nix, Yjs, Automerge, and Loro as instances or non-instances, explaining *why* each falls where it does.
+
+---
+
 ## References
 
 [1] M. Shapiro, N. Preguiça, C. Baquero, and M. Zawirski, "Conflict-Free Replicated Data Types," in *Stabilization, Safety, and Security of Distributed Systems*, vol. 7032 of *LNCS*, Springer, 2011, pp. 386–400.
