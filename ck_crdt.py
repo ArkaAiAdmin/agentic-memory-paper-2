@@ -586,7 +586,7 @@ def run_all_tests():
     # This proves O(N) throughput: ~0.4M ops/s constant from 100K to 10M.
     # At 575 bytes/op, 10M requires ~5.5GB RAM — within commodity limits.
     # 1B would require ~536GB (memory-bound, not compute-bound); a disk-backed
-    # streaming implementation would handle 1B in ~49 min at the same throughput.
+    # streaming implementation would handle 1B in ~2 hours at the same throughput.
     # Edges omitted at this scale — they're O(N/100) and trivial.
     N7 = 10_000_000
     K7 = 100  # 100 distinct entities → 99.999% loss ratio

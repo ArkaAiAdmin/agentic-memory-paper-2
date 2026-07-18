@@ -41,7 +41,7 @@ We provide answers to all four questions.
 
 ### 1.3 Scope and Companion
 
-This paper is the theoretical companion to Sadhu [14], which provides the reference implementation (`crdt_projection.py`, 48 passing tests) and empirical evaluation of a specific CK-CRDT instance. Paper 2 proves the general properties that Paper 1's pipeline satisfies. The two papers are complementary: Paper 1 is engineering + specific results; Paper 2 is theory + general framework.
+This paper is the theoretical companion to Sadhu [14], which provides the reference implementation (`crdt_projection.py`, 51 passing tests) and empirical evaluation of a specific CK-CRDT instance. Paper 2 proves the general properties that Paper 1's pipeline satisfies. The two papers are complementary: Paper 1 is engineering + specific results; Paper 2 is theory + general framework.
 
 ### 1.4 Contributions
 
@@ -280,7 +280,7 @@ Content-keying is optional when:
 
 ### 8.2 Connection to Prior Work
 
-This paper generalizes the three-phase knowledge-graph projection pipeline described in Sadhu [14]. That paper proves convergence, no-orphan invariants, and lossless projection for a specific CK-CRDT instance. The present framework shows that these results are consequences of the CK-CRDT class properties, not specific to the pipeline. Theorem 1 generalizes Theorem 3 of [14] (Canonical-Id Monotonicity); Theorem 2 generalizes Corollary 1 of [14] (unconditional no-orphan); Theorem 3 generalizes Theorem 4 of [14] (lossless projection up to kernel); Theorem 4 is new, providing the convergence conditions that [14] assumes but does not state.
+This paper generalizes the three-phase knowledge-graph projection pipeline described in Sadhu [14]. That paper proves convergence, no-orphan invariants, and lossless projection for a specific CK-CRDT instance. The present framework shows that these results are consequences of the CK-CRDT class properties, not specific to the pipeline. Theorem 1 generalizes Theorem 2 of [14] (Canonical-Id Monotonicity); Theorem 2 generalizes Corollary 1 of [14] (unconditional no-orphan); Theorem 3 generalizes Theorem 4 of [14] (lossless projection up to kernel); Theorem 4 is new, providing the convergence conditions that [14] assumes but does not state.
 
 **Connection to the vv_sum corrigendum.** Sadhu [14] corrected vv_sum → vv_dominates for edge merge. The underlying issue was that vv_sum conflated concurrent vectors, violating the monotonicity properties of the ordering: a causal update (bumping one peer's clock) could change the sum in a way that reversed the ordering. vv_dominates respects the causal partial order — a causal update can only strengthen dominance, never reverse it — so the ordering is monotonic under causal updates. In CK-CRDT terms, vv_sum violated K2 (content-locality) because the merge outcome depended on the bag's vector-clock composition, not on operation content alone.
 
@@ -498,7 +498,7 @@ Paper 1 proves convergence for one specific pipeline. Paper 2 proves convergence
 
 [3] W. W. Cohen, P. Ravikumar, and S. E. Fienberg, "A Comparison of String Distance Metrics for Name-Matching Tasks," in *Proceedings of IJCAI 2003*, 2003, pp. 73–77.
 
-[4] A. Haas, "Yjs: A CRDT Framework for Collaborative Editing," 2021. [Online]. Available: https://yjs.dev/
+[4] P. Nicolaescu, K. Jahns, M. Derntl, and R. Klamma, "Yjs: A Framework for Near Real-Time P2P Shared Editing on Arbitrary Data Types," in *Proceedings of the 15th International Conference on Web Engineering (ICWE 2015)*, vol. 9114 of *LNCS*, Springer, 2015, pp. 675–678. doi: 10.1007/978-3-319-19890-3_55
 
 [5] Automerge Contributors, "Automerge: A CRDT Framework for Collaborative Editing," 2016–present. [Online]. Available: https://github.com/automerge/automerge
 
@@ -510,7 +510,7 @@ Paper 1 proves convergence for one specific pipeline. Paper 2 proves convergence
 
 [9] J. Benet, "IPFS - Content Addressed, Versioned, P2P File System," arXiv:1407.3561, 2014.
 
-[10] N. Preguiça, C. Baquero, M. Shapiro, and S. Duarte, "SwiftCloud: Fault-tolerant Geo-replication Integrated All the Way to the Client Machine," in *Proceedings of the 14th International Symposium on Stabilization, Safety, and Security of Distributed Systems (SSS)*, 2013, pp. 354–369.
+[10] M. Zawirski, A. Bieniusa, V. Balegas, S. Duarte, C. Baquero, M. Shapiro, and N. Preguiça, "SwiftCloud: Fault-Tolerant Geo-Replication Integrated all the Way to the Client Machine," in *Proceedings of the 33rd IEEE International Symposium on Reliable Distributed Systems Workshops (SRDS-W 2014)*, 2014, pp. 30–33. doi: 10.1109/SRDSW.2014.33
 
 [11] S. Chacon and B. Straub, *Pro Git*, 2nd ed. Apress, 2014.
 
@@ -520,10 +520,10 @@ Paper 1 proves convergence for one specific pipeline. Paper 2 proves convergence
 
 [14] S. Sadhu, "Conflict-Free Knowledge Graph Projection: A Three-Phase CRDT Pipeline for Multi-Agent Memory Systems," preprint, 2026.
 
-[15] C. Baquero, P. S. Almeida, A. Cunha, and C. Leitão, "Delta State Replicated Data Types," *Journal of Parallel and Distributed Computing*, vol. 111, pp. 162–173, 2018. Earlier version: arXiv:1603.01529, 2016.
+[15] P. S. Almeida, A. Shoker, and C. Baquero, "Delta State Replicated Data Types," *Journal of Parallel and Distributed Computing*, vol. 111, pp. 162–173, 2018. doi: 10.1016/j.jpdc.2017.08.003
 
 [16] P. Christen, *Data Matching: Concepts and Techniques for Record Linkage, Entity Resolution, and Duplicate Detection*, Springer, 2012.
 
 [17] L. Lamport, "Time, Clocks, and the Ordering of Events in a Distributed System," *Communications of the ACM*, vol. 21, no. 7, pp. 558–565, 1978.
 
-[18] S. S. Kulkarni, M. Demirbas, D. Madappa, B. Avva, and M. Leone, "Logical Physical Clocks," in *Proceedings of OPODIS 2014*, pp. 241–256.
+[18] S. S. Kulkarni, M. Demirbas, D. Madappa, B. Avva, and M. Leone, "Logical Physical Clocks," in *Proceedings of the 18th International Conference on Principles of Distributed Systems (OPODIS 2014)*, vol. 8878 of *LNCS*, Springer, 2014, pp. 17–32. doi: 10.1007/978-3-319-14472-6_2
