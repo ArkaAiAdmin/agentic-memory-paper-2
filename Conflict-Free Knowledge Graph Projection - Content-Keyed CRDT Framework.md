@@ -61,14 +61,16 @@ A CRDT is a data structure that can be replicated across multiple peers, updated
 
 ### 2.2 Content-Keyed CRDTs: Formal Definition
 
-**Definition 1 (Content Key).** A *content key* is a function $\kappa : O \to K$ from the operation alphabet to a key space, such that operations with the same key are semantically equivalent for merge purposes.
+**Definition 1 (Content Key).** A *content key* is a total function $\kappa : O \to K$ from the operation alphabet to a key space. The partition $O / \kappa$ induced by $\kappa$ defines the equivalence classes under which merge is applied: operations in the same class are merged together; operations in different classes are independent.
 
-**Definition 2 (CK-CRDT).** A *content-keyed CRDT* is a pair $(\kappa, \rho)$ where:
+**Definition 2 (CK-CRDT).** A *content-keyed CRDT* is a tuple $(\kappa, \rho, M)$ where:
 - $\kappa : O \to K$ is a content-key function partitioning operations into classes $C_k = \{o \in O : \kappa(o) = k\}$.
-- $\rho : \mathcal{P}(O) \to O$ is a representative-selection function choosing one operation per class: $\rho(C_k) \in C_k$.
+- For each class $C_k$, $\rho_k : \mathcal{P}(C_k) \to C_k$ is a deterministic representative-selection function choosing one operation per class: $\rho_k(S) \in S$ for any non-empty $S \subseteq C_k$.
+- $M : \text{Bag}(O) \to S$ is the merge function, defined as: given a bag (multiset) of operations $O$, partition into classes $C_k = \{o \in O : \kappa(o) = k\}$, apply $\rho_k$ to each class, and produce canonical state as the union of representatives.
 
-The merge function is:
-$$M_{\text{CK}}(O) = \{\rho(C_k) : k \in \kappa(O)\}$$
+$$M(O) = \bigcup_{k \in \kappa(O)} \{\rho_k(C_k)\}$$
+
+The state of a CK-CRDT peer is the bag of operations it has received; the merge function $M$ is the canonical projection from bags to state.
 
 **Definition 3 (Equivalence Classes).** The content key induces a partition $O / \kappa$ where each class $C_k$ contains all operations with key $k$. Two operations are equivalent ($o_1 \sim o_2$) iff $\kappa(o_1) = \kappa(o_2)$.
 
@@ -86,19 +88,23 @@ $$M_{\text{CK}}(O) = \{\rho(C_k) : k \in \kappa(O)\}$$
 
 ## 3. Theorem 1: Content-Key Monotonicity
 
-**Theorem 1 (Content-Key Monotonicity).** Let $(\kappa, \rho)$ be a CK-CRDT over an operation alphabet with a partial order $\leq$ on operations (e.g., by ID or timestamp). The following are equivalent:
+**Definition 7 (Argmax ρ).** A representative-selection function $\rho$ is an *argmax* over a strict total preorder $\preceq$ on operations if $\rho(S) = \arg\max_{\preceq}(S)$ for any non-empty $S \subseteq C_k$. That is, $\rho$ selects the $\preceq$-maximum element of its input set.
 
-(a) $\rho$ is monotone: for any class $C$ and any $C' \supseteq C$, $\rho(C') \geq \rho(C)$.
+**Theorem 1 (Content-Key Monotonicity).** Let $(\kappa, \rho)$ be a CK-CRDT where $\rho$ is an argmax over a strict total preorder $\preceq$ on operations. Then:
+
+(a) $\rho$ is monotone: for any class $C$ and any $C' \supseteq C$, $\rho(C') \succeq \rho(C)$.
 
 (b) $\rho$ is content-stable: re-import of the canonical representative does not displace it. Formally, $\rho(C \cup \{\rho(C)\}) = \rho(C)$.
 
+(a) and (b) are equivalent.
+
 *Proof:* 
 
-($\Rightarrow$) Suppose $\rho$ is monotone. Let $c = \rho(C)$. Then $C \cup \{c\} \supseteq C$, so by monotonicity $\rho(C \cup \{c\}) \geq \rho(C) = c$. But $\rho(C \cup \{c\}) \in C \cup \{c\}$, and $c$ is the maximum element of $C$ (since $\rho(C) = c$ and $\rho$ selects from $C$). So $\rho(C \cup \{c\}) = c$. $\square$
+($\Rightarrow$) Suppose $\rho$ is monotone. Let $c = \rho(C)$. Then $C \cup \{c\} \supseteq C$, so by monotonicity $\rho(C \cup \{c\}) \succeq \rho(C) = c$. But $\rho(C \cup \{c\}) \in C \cup \{c\}$, and $\rho$ is an argmax — it selects the $\preceq$-maximum element. Within $C \cup \{c\}$, the element $c$ is $\preceq$-maximal (it was $\preceq$-maximal in $C$, and no element of $C$ is $\preceq$-greater than $c$; the only other element is $c$ itself). So $\rho(C \cup \{c\}) = c$. $\square$
 
-($\Leftarrow$) Suppose $\rho$ is content-stable: $\rho(C \cup \{c\}) = c$ for all $c = \rho(C)$. We need to show monotonicity. Let $C' \supseteq C$. We must show $\rho(C') \geq \rho(C)$. Suppose for contradiction that $\rho(C') < \rho(C) = c$. Since $C' \supseteq C$, we have $c \in C'$. By content-stability applied to $C'$, $\rho(C' \cup \{c\}) = c$. But $C' \cup \{c\} = C'$ (since $c \in C'$), so $\rho(C') = c$. This contradicts $\rho(C') < c$. Therefore $\rho(C') \geq \rho(C)$. $\square$
+($\Leftarrow$) Suppose $\rho$ is content-stable: $\rho(S \cup \{\rho(S)\}) = \rho(S)$ for any $S$. Let $C' \supseteq C$. We must show $\rho(C') \succeq \rho(C)$. Let $c' = \rho(C')$. Since $C' \supseteq C$, we have $c' \in C'$. If $c' \succeq \rho(C)$, we're done. Suppose for contradiction that $\rho(C) \succ c'$. Then $\rho(C) \in C'$ (since $\rho(C) \in C \subseteq C'$). By content-stability applied to $C'$, $\rho(C' \cup \{\rho(C')\}) = \rho(C')$. But since $\rho(C) \succ c' = \rho(C')$ and $\rho$ is an argmax, $\rho(C')$ cannot be the $\preceq$-maximum of $C'$ (because $\rho(C) \in C'$ and $\rho(C) \succ c'$). Contradiction with $\rho$ being an argmax. Therefore $\rho(C') \succeq \rho(C)$. $\square$
 
-**Corollary 1.** In our pipeline, $\rho(C) = \max(C)$ (highest entity ID). This satisfies monotonicity: $C' \supseteq C \implies \max(C') \geq \max(C)$. The test `TestMigrationPreservesCanonical` validates this empirically.
+**Corollary 1.** In our pipeline, $\rho(C) = \max(C)$ (highest entity ID), which is an argmax over the natural order on IDs. This satisfies monotonicity: $C' \supseteq C \implies \max(C') \geq \max(C)$. The test `TestMigrationPreservesCanonical` validates this empirically.
 
 ---
 
@@ -136,31 +142,31 @@ $$M_{\text{CK}}(O) = \{\rho(C_k) : k \in \kappa(O)\}$$
 
 ## 6. Theorem 4: Content Key Properties
 
-**Theorem 4 (Content Key Properties).** For a CK-CRDT $(\kappa, \rho)$ to satisfy convergence and consensus across replicas, the content key $\kappa$ must satisfy three properties:
+**Theorem 4 (Content Key Properties).** For a CK-CRDT $(\kappa, \rho, M)$ with $\rho$ an argmax over a strict total preorder $\preceq$ (Definition 7), convergence requires three properties of the content key $\kappa$:
 
-**(K1) Determinism:** Same content → same key. Formally: $\forall o_1, o_2$ with identical content fields, $\kappa(o_1) = \kappa(o_2)$. This ensures all peers partition operations the same way.
+**(K1) Determinism:** $\kappa$ is a pure function of the operation's content fields. Formally: $\forall o_1, o_2$ with identical content fields, $\kappa(o_1) = \kappa(o_2)$. This ensures all peers partition operations the same way.
 
-**(K2) Peer-publicity:** The key depends only on fields determined at op creation time and fixed thereafter. Formally: $\kappa(o)$ is invariant under delivery order — it does not change as more operations arrive. This ensures the partition is stable under causal delivery.
+**(K2) Peer-publicity:** $\kappa(o)$ depends only on fields that are determined at op creation time and fixed thereafter — it does not depend on the delivery order or on other operations in the bag. Formally: for any operation $o$ and any two bags $O_1, O_2$ both containing $o$, $\kappa(o)$ is the same value.
 
-**(K3) Monotonicity-under-update:** Key derivation is a homomorphism under the LWW order on its fields. Formally: if operation $o'$ causally follows $o$ and agrees with $o$ on all key-relevant fields, then $\kappa(o') = \kappa(o)$. This ensures a metadata update doesn't split or merge classes inappropriately.
+**(K3) Non-key invariance:** If operation $o'$ extends $o$ by updating at least one non-key field, and does not update any key-relevant field, then $\kappa(o') = \kappa(o)$. This ensures that a metadata update (which changes non-key fields under LWW) doesn't change the key, so the partition is stable under the CRDT's own update rule.
 
-**Convergence guarantee:** If $\kappa$ satisfies (K1)–(K3), then $M_{\text{CK}}$ converges: all peers with the same operation set produce the same partition and the same representatives.
+**Convergence guarantee:** If $\kappa$ satisfies (K1)–(K3) and $\rho$ is an argmax over a strict total preorder (Definition 7), then $M$ converges: all peers with the same operation bag produce the same canonical state.
 
 *Proof:* 
 
-(K1) ensures all peers compute the same partition $\kappa(O)$. (K2) ensures the partition is invariant under delivery order — two peers receiving the same ops in different orders compute the same $\kappa$. (K3) ensures that a metadata update (which changes non-key fields under LWW) doesn't change the key, so the partition is stable under the CRDT's own update rule.
+(K1) ensures all peers compute the same partition $\kappa(O)$ for any bag $O$. (K2) ensures that $\kappa(o)$ is the same regardless of which other operations have been delivered — so the partition is invariant under delivery order. (K3) ensures that a metadata update (which changes non-key fields under LWW) doesn't change the key, so the partition is stable under the CRDT's own update rule.
 
-Given a stable partition, convergence follows from the CAI criteria on $\rho$: $\rho$ is deterministic (same class → same representative) and idempotent ($\rho(C \cup \{\rho(C)\}) = \rho(C)$ by Theorem 1). $\square$
+Given a stable partition, convergence follows from two facts: (1) $\rho$ is an argmax over a strict total preorder, so it is deterministic (same set → same representative), commutative (the argmax doesn't depend on the order elements are considered), associative (argmax of argmaxes is argmax), and idempotent (argmax of a set containing the argmax is the argmax) — satisfying the CAI criteria [1]; (2) $\kappa$ is a pure function of the bag, so all peers compute the same partition. Therefore $M(O) = \bigcup_k \{\rho_k(C_k)\}$ is the same for all peers. $\square$
 
 **Necessity (violating each property breaks convergence):**
 
-We prove the contrapositive: if convergence holds, then (K1)–(K3) hold. Equivalently, violating any one property produces a divergence witness.
+We prove the contrapositive: if convergence holds, then (K1)–(K3) hold. Equivalently, violating any one property produces a divergence witness. We construct explicit counterexamples for each.
 
-*Violating (K1) breaks convergence.* Suppose $\kappa$ is non-deterministic: there exist operations $o_1, o_2$ with identical content fields but $\kappa(o_1) \neq \kappa(o_2)$. Peer A receives $\{o_1\}$; peer B receives $\{o_2\}$. Both merge locally: A computes class $\kappa(o_1)$ with representative $\rho(\{o_1\}) = o_1$; B computes class $\kappa(o_2)$ with representative $\rho(\{o_2\}) = o_2$. After exchange, A has $\{o_1, o_2\}$ in two classes; B has $\{o_1, o_2\}$ in two classes. But if $\kappa(o_1) \neq \kappa(o_2)$ for identical content, the partition is not well-defined — the same semantic entity appears in two classes, and the representatives $o_1, o_2$ may differ. Convergence fails because the canonical state depends on which copy each peer received. $\square$
+*Violating (K1) breaks convergence.* Construct: let $o_1, o_2$ be two operations with identical content fields. Define $\kappa(o_1) = k_a$, $\kappa(o_2) = k_b$ with $k_a \neq k_b$ (non-deterministic key). Peer A has bag $\{o_1\}$; peer B has bag $\{o_2\}$. A computes $M(\{o_1\}) = \{\rho_{k_a}(\{o_1\})\} = \{o_1\}$. B computes $M(\{o_2\}) = \{\rho_{k_b}(\{o_2\})\} = \{o_2\}$. After exchange, both have $\{o_1, o_2\}$. But $\kappa(o_1) = k_a$ and $\kappa(o_2) = k_b$, so the partition is $\{o_1\}, \{o_2\}$ — the same semantic entity appears in two classes. If $o_1 \neq o_2$ (different IDs, same content), the representatives may differ. Convergence fails: $M_A \neq M_B$. $\square$
 
-*Violating (K2) breaks convergence.* Suppose $\kappa$ depends on delivery order: there exist operations $o_1, o_2$ such that $\kappa(o_1)$ changes depending on whether $o_2$ has been delivered. Peer A receives $o_1$ first, then $o_2$; peer B receives $o_2$ first, then $o_1$. After full delivery, both peers have $\{o_1, o_2\}$. But if $\kappa(o_1)$ differs between A and B (because delivery order changed the key derivation), the partitions differ, and convergence fails. $\square$
+*Violating (K2) breaks convergence.* Construct: let $\kappa(o)$ depend on the bag $O$ (not just $o$'s content). Specifically, define $\kappa(o) = k_a$ if $|O| = 1$ and $\kappa(o) = k_b$ if $|O| > 1$. Peer A receives $o_1$ first (bag $\{o_1\}$, so $\kappa(o_1) = k_a$), then $o_2$ (bag $\{o_1, o_2\}$, so $\kappa(o_1)$ might now be $k_b$). Peer B receives $o_2$ first (bag $\{o_2\}$, so $\kappa(o_2) = k_a$), then $o_1$ (bag $\{o_1, o_2\}$, so $\kappa(o_2)$ might now be $k_b$). The key derivation depends on delivery order, so $M_A \neq M_B$. $\square$
 
-*Violating (K3) breaks convergence.* Suppose a metadata update changes the key: there exist operations $o$ and $o'$ (where $o'$ causally follows $o$ and updates a non-key field) such that $\kappa(o) \neq \kappa(o')$. Peer A receives $o$ and computes class $\kappa(o)$. Peer B receives $o'$ first (before $o$), computes class $\kappa(o')$. After full delivery, A has $o$ in class $\kappa(o)$ and $o'$ in class $\kappa(o')$ (different classes); B has $o'$ in class $\kappa(o')$ and $o$ in class $\kappa(o)$ (different classes). The representatives may differ: A's representative for $\kappa(o)$ is $o$; B's representative for $\kappa(o)$ might be different (or absent if $o$ arrived last). The partition is not stable under the CRDT's own update rule. $\square$
+*Violating (K3) breaks convergence.* Construct: let $o$ have key-relevant fields $(name=\text{"alice"}, type=\text{"person"})$ and non-key field $description=\text{""}$. Let $o'$ extend $o$ with $description=\text{"lawyer"}$ (a metadata update). Define $\kappa(o) = k_1$ but $\kappa(o') = k_2$ (the key changes because the key derivation uses description). Peer A has bag $\{o\}$; peer B has bag $\{o, o'\}$. A computes $M_A = \{\rho_{k_1}(\{o\})\} = \{o\}$. B computes $M_B = \{\rho_{k_1}(\{o\}), \rho_{k_2}(\{o'\})\} = \{o, o'\}$. The partition differs: A has one class, B has two. Convergence fails. $\square$
 
 **Connection to the vv_sum corrigendum.** Sadhu [21] corrected vv_sum → vv_dominates for edge merge. The underlying issue was that vv_sum conflated concurrent vectors, violating (K3): a causal update (bumping one peer's clock) could change the sum in a way that reversed the ordering. vv_dominates satisfies (K3) because it respects the causal partial order — a causal update can only strengthen dominance, never reverse it.
 
@@ -172,17 +178,17 @@ We prove the contrapositive: if convergence holds, then (K1)–(K3) hold. Equiva
 |---|---|---|---|---|---|---|
 | Our pipeline | Yes | SHA-256(name, type, desc) | Y | Y | Y | Canonical example |
 | IPFS/IPLD | Yes | SHA-256(content) | Y | Y | Y | Trivially satisfied (content immutable) |
-| Git | Yes | SHA-1(content, tree, parents) | Y | Y | Y | Content-addressed commits; immutable once created |
+| Git (commits) | Yes | SHA-1(content, tree, parents) | Y | Y | Y | Content-addressed commits; immutable. Note: git merge is not a CRDT operation. |
 | Syncthing | Yes | Block hash | Y | Y | Y | Content-addressed block sync |
 | Dat/Hypercore | Yes | Content hash | Y | Y | Y | Append-only log with content-addressed blocks |
 | Deduplicating sync | Yes | Content hash | Y | Y | Y | First-seen or max-id selection |
-| Yjs | No | Server-assigned Lamport ID | — | — | — | Avoids content-keying; IDs assigned at creation |
+| Yjs | No | Client-generated clock-based ID | — | — | — | Avoids content-keying; IDs assigned at creation |
 | Automerge | No | UUID at creation | — | — | — | Avoids content-keying; UUIDs guarantee uniqueness |
 | Loro | No | Random ID at creation | — | — | — | Same pattern as Automerge |
 | Google Docs | No | Server-assigned op ID | — | — | — | Centralized; no content-keying needed |
 | VS Code Live Share | No | Session-scoped IDs | — | — | — | Session-scoped; duplicates across sessions acceptable |
-| Bitcoin | Partial | SHA-256(block header) | Y | Y | Partial | (K1)–(K2) hold; (K3) constrains write types (no updates) |
-| Ethereum | Partial | Keccak-256(state) | Y | Y | Partial | State trie is content-addressed; updates are transactions |
+| Bitcoin (blocks) | Partial | SHA-256(block header) | Y | Y | Partial | Content-addressed, but consensus via PoW, not CRDT merge. Illustrative only. |
+| Ethereum (state) | Partial | Keccak-256(state) | Y | Y | Partial | State trie is content-addressed, but consensus via PoS. Illustrative only. |
 
 **Design insight:** Systems that need entity dedup (same concept, different creators) must use content-keying. Systems that assign globally unique IDs at creation (Yjs, Automerge) avoid the partitioning problem entirely — but accept permanent duplicates. The framework explains when content-keying is necessary vs. optional.
 
@@ -251,17 +257,19 @@ All four questions raised in the initial draft have been resolved:
 
 ## 10. Extensions
 
-We resolve all four open questions from §9.4.
+We address all four questions from §9.4. Theorems 5 and 6 follow directly from Theorem 4. Theorems 7 and 8 are speculative extensions that require further validation.
 
 **Theorem 5 (Multi-key CK-CRDTs).** Let $\kappa' = (\kappa_1, \kappa_2)$ be a composite content key where $\kappa_1 : O \to K_1$ and $\kappa_2 : O \to K_2$ are component keys. If each $\kappa_i$ satisfies (K1)–(K3) individually, then $\kappa'$ satisfies (K1)–(K3) and the CK-CRDT $(\kappa', \rho)$ converges.
 
 *Proof:* 
 
-(K1) for $\kappa'$: If $\kappa_1(o_1) = \kappa_1(o_2)$ and $\kappa_2(o_1) = \kappa_2(o_2)$, then $\kappa'(o_1) = \kappa'(o_2)$. Since each $\kappa_i$ is deterministic, $\kappa'$ is deterministic.
+Let $\kappa'(o) = (\kappa_1(o), \kappa_2(o))$ where $\kappa_i : O \to K_i$ are component keys.
 
-(K2) for $\kappa'$: Since each $\kappa_i$ is invariant under delivery order (by (K2) for each component), $\kappa'$ is also invariant.
+(K1) for $\kappa'$: If $o_1, o_2$ have identical content fields (under the content definition for $\kappa'$, which is the union of content fields for $\kappa_1$ and $\kappa_2$), then $\kappa_1(o_1) = \kappa_1(o_2)$ (by (K1) for $\kappa_1$) and $\kappa_2(o_1) = \kappa_2(o_2)$ (by (K1) for $\kappa_2$). Therefore $\kappa'(o_1) = \kappa'(o_2)$.
 
-(K3) for $\kappa'$: If $o'$ causally follows $o$ and agrees on all key-relevant fields, then $\kappa_i(o') = \kappa_i(o)$ for each $i$ (by (K3) for each component), so $\kappa'(o') = \kappa'(o)$. $\square$
+(K2) for $\kappa'$: Since each $\kappa_i(o)$ depends only on $o$'s content fields (by (K2) for each component), $\kappa'(o)$ also depends only on $o$'s content fields. Therefore $\kappa'$ is invariant under delivery order.
+
+(K3) for $\kappa'$: If $o'$ extends $o$ by updating only non-key fields (under $\kappa'$'s key-relevant field set, which is the union of $\kappa_1$'s and $\kappa_2$'s key-relevant fields), then $\kappa_i(o') = \kappa_i(o)$ for each $i$ (by (K3) for each component), so $\kappa'(o') = \kappa'(o)$. $\square$
 
 **Corollary 3.** Our pipeline's fingerprint key $\kappa(o) = \text{SHA-256}(\text{name}, \text{type}, \text{description})$ is a composite key with three components. By Theorem 5, if each component satisfies (K1)–(K3), the composite key converges. Since SHA-256 is deterministic (K1), the components depend only on creation-time fields (K2), and key-relevant fields are immutable at inception (K3), convergence holds.
 
