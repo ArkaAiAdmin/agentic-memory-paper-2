@@ -11,7 +11,7 @@
 
 ## Abstract
 
-We define *content-keyed CRDTs* (CK-CRDTs) — a CRDT subclass whose merge partitions operations by a content-derived key and selects one representative per class. We prove eight structural results: (1) representative-selection is monotone under argmax over a total order (Theorem 1); (2) canonicalization-at-write-time suffices for no-orphan guarantees under downstream CRDTs (Theorem 2); (3) merge discards exactly the within-class loser set, unrecoverable from canonical state (Theorem 3); (4) convergence requires three content-key properties — determinism, content-locality, and non-key invariance (Theorem 4); (5) composite keys inherit convergence (Theorem 5); (6) deterministic approximate keys converge (Theorem 6); (7) adaptive keys converge if the migration graph is acyclic, and cycles may break convergence (Theorem 7); (8) CK-CRDTs compose with delta-CRDTs when the delta computation is stratified (Theorem 8). The framework classifies content-addressed systems, version control, deduplicating sync, and collaborative editors, explaining the tradeoff between content-keying (dedup capability) and ID-at-creation (simplicity).
+We define *content-keyed CRDTs* (CK-CRDTs) — a CRDT subclass whose merge partitions operations by a content-derived key and selects one representative per class. We prove eight structural results: (1) representative-selection is monotone under argmax over a total order (Theorem 1); (2) canonicalization-at-write-time suffices for no-orphan guarantees under downstream CRDTs (Theorem 2); (3) merge discards exactly the within-class loser set, unrecoverable from canonical state (Theorem 3); (4) three content-key properties — determinism, content-locality, and non-key invariance — suffice for convergence (Theorem 4); (5) composite keys inherit convergence (Theorem 5); (6) deterministic approximate keys converge (Theorem 6); (7) adaptive keys converge if the migration graph is acyclic, and cycles may break convergence (Theorem 7); (8) CK-CRDTs compose with delta-CRDTs when the delta computation is stratified (Theorem 8). The framework classifies content-addressed systems, version control, deduplicating sync, and collaborative editors, explaining the tradeoff between content-keying (dedup capability) and ID-at-creation (simplicity).
 
 ---
 
@@ -58,25 +58,25 @@ This paper is the theoretical companion to Sadhu [14], which provides the refere
 
 ---
 
-## 1.4 Related Work
+### 1.5 Related Work
 
-### 1.4.1 CRDT Foundations
+#### 1.5.1 CRDT Foundations
 
 Shapiro et al. [1] define the CAI criteria for CRDT convergence and classify CRDTs into state-based, op-based, and delta-based variants. Our framework operates within this model: CK-CRDTs satisfy CAI when $\kappa$ satisfies (K1)–(K3) and $\rho$ satisfies Theorem 1. Preguiça et al. [10] address fault-tolerant geo-replication with causal consistency, demonstrating that CRDT-based systems can maintain consistency across wide-area networks — a setting where CK-CRDTs must also operate. Baquero et al. [15] introduce delta-CRDTs, compact state-synchronization representations that our Theorem 8 addresses.
 
-### 1.4.2 Content-Addressed Systems
+#### 1.5.2 Content-Addressed Systems
 
 IPFS [9] and IPLD use content hashes as identifiers. Git [11] uses SHA-1 hashes of content, tree structure, and parent commits to create an immutable DAG of project history. These systems use content-addressing but are not CRDTs — they have no merge function in the CRDT sense. The Hypercore/Dat protocol [12] uses content-addressed blocks in an append-only log. We classify these as *content-addressed (not CK-CRDT)* — they illustrate the keying pattern but fall outside the CRDT framework.
 
-### 1.4.3 Deduplicating CRDTs
+#### 1.5.3 Deduplicating CRDTs
 
 Several systems merge concurrent operations by content similarity [2, 3, 7]. Kleppmann [13] addresses Byzantine fault tolerance in CRDTs, showing that content-keying must be verified against adversarial peers — a concern our adversarial test suite (§8.3) directly addresses. Our framework provides convergence conditions that these systems satisfy implicitly, and identifies non-key invariance (K3) as the property they must verify.
 
-### 1.4.4 Entity Resolution
+#### 1.5.4 Entity Resolution
 
 Fellegi–Sunter [2] and Cohen et al. [3] address record linkage in data integration using probabilistic matching. Christen [16] provides a comprehensive survey of data-matching techniques. LIMES [8] performs large-scale link discovery on the Web of Data. These methods operate in a batch, centralized setting — our CK-CRDT framework extends the keying idea to the distributed, concurrent setting where multiple peers create records independently and must reconcile at merge time without coordination.
 
-### 1.4.5 Collaborative Editing
+#### 1.5.5 Collaborative Editing
 
 Yjs [4], Automerge [5], and Loro [6] assign globally unique IDs at creation time, avoiding content-keying at the data-model layer. Google Docs uses server-assigned operation IDs. The substantive reason these systems avoid content-keying is that collaborative text *requires tracking position in a shared sequence* (causal trees, RGA, or list CRDTs) — content-keying would collapse operations at different positions with identical content, breaking the sequence semantics. The dedup-vs-simplicity tradeoff is a secondary effect. At the transport layer, Yjs uses content-hashing for block-level synchronization, but the data model remains ID-at-creation.
 
@@ -347,7 +347,7 @@ Let $\kappa'(o) = (\kappa_1(o), \kappa_2(o))$ where $\kappa_i : \mathcal{O} \to 
 
 ### 9.3 Theorem 7: Adaptive Keys
 
-**Definition 7 (Key Migration Graph).** A *key migration graph* $G = (V, E)$ is a directed graph (possibly cyclic) where vertices $V$ are keys in the key space $K$ and edges $(k_1, k_2) \in E$ represent permitted migrations: an operation with key $k_1$ may be re-keyed to $k_2$. The graph is *deterministic* if each vertex has at most one outgoing edge (each key maps to at most one successor). Migration triggers on every merge application.
+**Definition 6 (Key Migration Graph).** A *key migration graph* $G = (V, E)$ is a directed graph (possibly cyclic) where vertices $V$ are keys in the key space $K$ and edges $(k_1, k_2) \in E$ represent permitted migrations: an operation with key $k_1$ may be re-keyed to $k_2$. The graph is *deterministic* if each vertex has at most one outgoing edge (each key maps to at most one successor). Migration triggers on every merge application.
 
 **Theorem 7 (Adaptive Keys — Sufficiency).** Let $(\kappa, \{\rho_k\}, M)$ be a CK-CRDT whose key function $\kappa$ evolves according to a deterministic key migration graph $G$. If $G$ is acyclic, then the CK-CRDT converges. If $G$ contains a cycle, convergence may break — different peers may compute different final keys for the same operation, violating (K1).
 
@@ -461,7 +461,7 @@ This appendix shows how Paper 1's three-phase pipeline [14] is a concrete instan
 | `kg_edge_crdt` operations | Downstream CRDT | Edges reference entities; foreign-key dependency |
 | `resolve_edge_endpoints()` | Theorem 2 (Layered No-Orphan) | Canonicalization at write time prevents orphans |
 | `kg_entity_redirect` table | Durable redirect map | Write-time lookup ensures edges reference canonical IDs |
-| Orphan guard (Phase 3) | Invariant 3 (§4.3) | No edge references a non-canonical entity |
+| Orphan guard (Phase 3) | Invariant 3 ([14] §5.2) | No edge references a non-canonical entity |
 | `verify_crdt_consistency()` | Defense-in-depth | Post-hoc check (production has write-time prevention) |
 
 ### B.3 Convergence Claim Mapping
@@ -480,7 +480,7 @@ Paper 1 proves convergence for one specific pipeline. Paper 2 proves convergence
 
 1. **Generality:** Paper 1's results apply to `SHA-256(name, type, desc)`. Paper 2's results apply to any $\kappa$ satisfying K1-K3. A different content key (e.g., `SHA-256(name, type)`) gets the same convergence guarantee for free.
 
-2. **Necessity:** Paper 1 assumes K1-K3 hold but doesn't prove they're necessary. Paper 2 proves K1 is both necessary and sufficient (Theorem 4 + counterexample in §8.3).
+2. **Necessity:** Paper 1 assumes K1-K3 hold but doesn't prove they're necessary. Paper 2 proves K1 is both necessary and sufficient (Theorem 4 + counterexample in §6).
 
 3. **Composition:** Paper 1 doesn't address how CK-CRDTs compose with other CRDTs. Paper 2 proves composition with delta-CRDTs (Theorem 8) and multi-key systems (Theorem 5).
 
