@@ -169,6 +169,13 @@ Assume $M_{\text{down}}$ applies $R_{\text{id}}$ to all edge endpoints at write 
 
 **Corollary 2.** In our pipeline, the orphan guard (`crdt_projection.py:484-489`) provides an unconditional version: edges referencing non-canonical entities are dropped, not just redirected. This is strictly stronger than Theorem 2 requires.
 
+**Worked example: concurrent edge write during redirect.** Consider three peers: Peer A creates entity $e_1$ (key $k_1$), Peer B creates entity $e_2$ (key $k_1$, same content), and Peer C writes edge $e_3 \to e_2$. At projection time, Phase 2 merges $e_1$ and $e_2$ (same fingerprint), selecting $e_1 = \max(e_1, e_2)$ as canonical. The redirect map is $R = \{e_2 \to e_1\}$. Peer C's edge $e_3 \to e_2$ references a loser ID.
+
+- **With durable redirect table** (production path): `resolve_edge_endpoints` queries `kg_entity_redirect` at write time, finds $R(e_2) = e_1$, and writes $e_3 \to e_1$. The edge is rewritten, not dropped.
+- **Without durable table** (standalone artifact): the orphan guard drops the edge because $e_2 \notin \text{canonical\_ids}$. The edge is lost but no orphan is created.
+
+Both approaches satisfy the no-orphan invariant. The production path is strictly stronger: it preserves the edge by rewriting it, while the standalone artifact preserves the invariant by dropping it. This is the same pattern resolved in Paper 1's production code (§5.4, issue 3).
+
 ---
 
 ## 5. Theorem 3: Kernel of CK-Merge

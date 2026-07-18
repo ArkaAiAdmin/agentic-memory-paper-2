@@ -523,15 +523,36 @@ def run_all_tests():
         ))
     results.append(measure_convergence(conn, f"Large-scale ({N} ops, {K} keys)", big_eops, big_eops_edge))
 
+    # Scenario 5: 100k ops with collisions (exercises dedup at scale)
+    N5 = 100_000
+    K5 = 1000  # distinct entities
+    big_eops5 = []
+    big_eops5_edge = []
+    for i in range(N5):
+        eid = (i % K5) + 1  # cycle through K5 entity IDs → collisions
+        big_eops5.append(EntityOp(
+            eid, f"agent_{i % 10}", "add",
+            {f"agent_{i % 10}": i // K5 + 1},
+            f"entity_{eid}", "type", "shared", "",
+            float(i),
+        ))
+    for i in range(N5 // 10):
+        big_eops5_edge.append(EdgeOp(
+            i, (i % K5) + 1, ((i + 1) % K5) + 1,
+            "related_to", 1.0, None, f"agent_{i % 10}",
+            {f"agent_{i % 10}": i // K5 + 1}, float(i),
+        ))
+    results.append(measure_convergence(conn, f"100k ops ({K5} keys, collisions)", big_eops5, big_eops5_edge))
+
     # Print results
-    print("=" * 72)
-    print(f"{'Scenario':<35} {'Ent':>4} {'Edg':>4} {'Redir':>5} "
-          f"{'Total':>5} {'Losers':>6} {'Loss%':>6} {'Time':>7}")
-    print("-" * 72)
+    print("=" * 80)
+    print(f"{'Scenario':<40} {'Ent':>5} {'Edg':>5} {'Redir':>5} "
+          f"{'Total':>6} {'Losers':>7} {'Loss%':>6} {'Time':>8}")
+    print("-" * 80)
     for r in results:
-        print(f"{r['label']:<35} {r['entities']:>4} {r['edges']:>4} {r['redirects']:>5} "
-              f"{r['total_ops']:>5} {r['losers']:>6} {r['loss_ratio']:>6.1%} {r['time_ms']:>6.2f}ms")
-    print("=" * 72)
+        print(f"{r['label']:<40} {r['entities']:>5} {r['edges']:>5} {r['redirects']:>5} "
+              f"{r['total_ops']:>6} {r['losers']:>7} {r['loss_ratio']:>6.1%} {r['time_ms']:>7.2f}ms")
+    print("=" * 80)
     print()
     print("All scenarios: convergence verified (idempotent), no-orphan invariant holds.")
     print("Loss ratio = (total_ops - winners) / total_ops — measures information discarded by CK-CRDT merge.")
