@@ -88,7 +88,7 @@ The state of a CK-CRDT peer is the bag of operations it has received; the merge 
 
 ## 3. Theorem 1: Content-Key Monotonicity
 
-**Definition 7 (Argmax ρ).** A representative-selection function $\rho$ is an *argmax* over a strict total preorder $\preceq$ on operations if $\rho(S) = \arg\max_{\preceq}(S)$ for any non-empty $S \subseteq C_k$. That is, $\rho$ selects the $\preceq$-maximum element of its input set.
+**Definition 4 (Argmax ρ).** A representative-selection function $\rho$ is an *argmax* over a strict total preorder $\preceq$ on operations if $\rho(S) = \arg\max_{\preceq}(S)$ for any non-empty $S \subseteq C_k$. That is, $\rho$ selects the $\preceq$-maximum element of its input set.
 
 **Theorem 1 (Content-Key Monotonicity).** Let $(\kappa, \rho)$ be a CK-CRDT where $\rho$ is an argmax over a strict total preorder $\preceq$ on operations. Then:
 
@@ -110,17 +110,17 @@ The state of a CK-CRDT peer is the bag of operations it has received; the merge 
 
 ## 4. Theorem 2: Layered No-Orphan Invariant
 
-**Definition 4 (Foreign-Key Dependency).** A downstream CRDT $M_{\text{down}}$ has a *foreign-key dependency* on an upstream CK-CRDT $M_{\text{CK}}$ if $M_{\text{down}}$'s operations reference entity IDs produced by $M_{\text{CK}}$.
+**Definition 5 (Foreign-Key Dependency).** A downstream CRDT $M_{\text{down}}$ has a *foreign-key dependency* on an upstream CK-CRDT $M_{\text{CK}}$ if $M_{\text{down}}$'s operations reference entity IDs produced by $M_{\text{CK}}$.
 
-**Definition 5 (Redirect Map).** Given a CK-CRDT $M_{\text{CK}}$ with representative function $\rho$, the *redirect map* $R: O \to O$ maps each loser operation to its class representative: $R(o) = \rho(\kappa(o))$ for all $o \notin W(O)$, and $R(o) = o$ for all $o \in W(O)$.
+**Definition 6 (Redirect Map).** Given a CK-CRDT $M_{\text{CK}}$ with representative function $\rho$, the *redirect map* $R: O \to O$ maps each loser operation to its class representative: $R(o) = \rho(\kappa(o))$ for all $o \notin W(O)$, and $R(o) = o$ for all $o \in W(O)$. For entity IDs, define $R_{\text{id}}(l) = \text{id}(\rho(\kappa(l)))$ where $\text{id}(o)$ extracts the entity ID from operation $o$.
 
-**Theorem 2 (Layered No-Orphan Invariant).** Let $M_{\text{CK}}$ be a CK-CRDT producing canonical entity IDs, and let $M_{\text{down}}$ be a downstream CRDT with foreign-key dependencies on those IDs. The no-orphan invariant — every edge endpoint in $M_{\text{down}}$'s output references an entity in $M_{\text{CK}}$'s output — holds iff $M_{\text{down}}$ applies $R$ (the redirect map from Definition 5) at write time.
+**Theorem 2 (Layered No-Orphan Invariant).** Let $M_{\text{CK}}$ be a CK-CRDT producing canonical entity IDs, and let $M_{\text{down}}$ be a downstream CRDT with foreign-key dependencies on those IDs. The no-orphan invariant — every edge endpoint in $M_{\text{down}}$'s output references an entity in $M_{\text{CK}}$'s output — holds iff $M_{\text{down}}$ applies $R_{\text{id}}$ (the ID redirect from Definition 5) at write time.
 
 *Proof:*
 
-($\Rightarrow$) If $R$ is applied at write time, then for every edge endpoint $e$ in $M_{\text{down}}$'s output, $e$ has been mapped through $R$. If $e$ was a loser ID $l$, then $R(l) = \rho(\kappa(l))$, which is a class representative and hence in $M_{\text{CK}}$'s output. If $e$ was already a winner ID, $R(e) = e$ and $e$ is in $M_{\text{CK}}$'s output. In both cases, the endpoint references a canonical entity. $\square$
+($\Rightarrow$) If $R_{\text{id}}$ is applied at write time, then for every edge endpoint $e$ in $M_{\text{down}}$'s output, $e$ has been mapped through $R_{\text{id}}$. If $e$ was a loser ID $l$ (i.e., $l$ is the ID of an operation $o \notin W(O)$), then $R_{\text{id}}(l) = \text{id}(\rho(\kappa(o)))$, which is the ID of a class representative and hence in $M_{\text{CK}}$'s output. If $e$ was already a winner ID, $R_{\text{id}}(e) = e$ and $e$ is in $M_{\text{CK}}$'s output. In both cases, the endpoint references a canonical entity. $\square$
 
-($\Leftarrow$) If $R$ is not applied at write time, then an edge referencing a loser ID $l$ (where $l \notin M_{\text{CK}}$'s output) is written unchanged. Since $l \notin M_{\text{CK}}$'s output, the invariant is violated. $\square$
+($\Leftarrow$) If $R_{\text{id}}$ is not applied at write time, then an edge referencing a loser ID $l$ (where $l$ is the ID of an operation not in $W(O)$, so $l \notin M_{\text{CK}}$'s output) is written unchanged. Since $l \notin M_{\text{CK}}$'s output, the invariant is violated. $\square$
 
 **Corollary 2.** In our pipeline, the orphan guard (`crdt_projection.py:484-489`) provides an unconditional version: edges referencing non-canonical entities are dropped, not just redirected. This is strictly stronger than Theorem 2 requires.
 
@@ -244,20 +244,18 @@ This paper generalizes the three-phase knowledge-graph projection pipeline descr
 - **Key immutability (partially addressed):** The basic framework assumes key immutability. Theorem 7 extends this to adaptive keys, but requires the migration graph to be acyclic — cycles break convergence.
 - **Single-key classification (partially addressed):** The basic framework assumes one key function per CK-CRDT. Theorem 5 extends this to composite keys, but each component must satisfy (K1)–(K3) individually.
 
-### 9.4 Resolved Questions (see §10)
+### 9.4 Addressed Questions (see §10)
 
-All four questions raised in the initial draft have been resolved:
-
-1. **Multi-key CK-CRDTs.** Resolved by Theorem 5: composite keys inherit (K1)–(K3) from their components.
-2. **Adaptive keys.** Resolved by Theorem 7: keys that evolve over time converge iff the migration graph is acyclic and deterministic.
-3. **Probabilistic content keys.** Resolved by Theorem 6: deterministic approximate keys converge; non-deterministic ones fail by (K1) violation.
-4. **Composition with delta-CRDTs.** Resolved by Theorem 8: CK-CRDTs compose with delta-CRDTs iff the delta computation is stratified.
+1. **Multi-key CK-CRDTs.** Fully addressed by Theorem 5: composite keys inherit (K1)–(K3) from their components.
+2. **Adaptive keys.** Partially addressed by Theorem 7: keys that evolve over time converge iff the migration graph is acyclic. This is a sufficient condition; the necessity direction requires the migration graph to be deterministic, which is assumed.
+3. **Probabilistic content keys.** Fully addressed by Theorem 6: deterministic approximate keys converge; non-deterministic ones fail by (K1) violation.
+4. **Composition with delta-CRDTs.** Partially addressed by Theorem 8: CK-CRDTs compose with delta-CRDTs iff the delta computation is stratified. This is a sufficient condition; the necessity direction assumes the delta-CRDT model holds.
 
 ---
 
 ## 10. Extensions
 
-We address all four questions from §9.4. Theorems 5 and 6 follow directly from Theorem 4. Theorems 7 and 8 are speculative extensions that require further validation.
+We address all four questions from §9.4. Theorems 5 and 6 follow directly from Theorem 4. Theorems 7 and 8 are partial results that provide sufficient conditions; their necessity directions require further validation.
 
 **Theorem 5 (Multi-key CK-CRDTs).** Let $\kappa' = (\kappa_1, \kappa_2)$ be a composite content key where $\kappa_1 : O \to K_1$ and $\kappa_2 : O \to K_2$ are component keys. If each $\kappa_i$ satisfies (K1)–(K3) individually, then $\kappa'$ satisfies (K1)–(K3) and the CK-CRDT $(\kappa', \rho)$ converges.
 
@@ -279,7 +277,7 @@ Let $\kappa'(o) = (\kappa_1(o), \kappa_2(o))$ where $\kappa_i : O \to K_i$ are c
 
 **Corollary 4.** Fuzzy record linkage systems (e.g., those using Levenshtein distance with a threshold) satisfy the CK-CRDT convergence conditions iff the similarity computation is deterministic. In practice, most implementations are deterministic (same strings → same distance), so convergence holds. Non-deterministic approximations (e.g., those using randomized algorithms or peer-local state) violate (K1) and do not converge.
 
-**Definition 6 (Key Migration Graph).** A *key migration graph* $G = (V, E)$ is a directed acyclic graph where vertices $V$ are keys in the key space $K$ and edges $(k_1, k_2) \in E$ represent permitted migrations: an operation with key $k_1$ may be re-keyed to $k_2$. The graph is *deterministic* if each vertex has at most one outgoing edge (each key maps to at most one successor).
+**Definition 7 (Key Migration Graph).** A *key migration graph* $G = (V, E)$ is a directed acyclic graph where vertices $V$ are keys in the key space $K$ and edges $(k_1, k_2) \in E$ represent permitted migrations: an operation with key $k_1$ may be re-keyed to $k_2$. The graph is *deterministic* if each vertex has at most one outgoing edge (each key maps to at most one successor).
 
 **Theorem 7 (Adaptive Keys).** Let $(\kappa, \rho)$ be a CK-CRDT whose key function $\kappa$ evolves over time according to a deterministic key migration graph $G$. The CK-CRDT converges iff $G$ is acyclic.
 
