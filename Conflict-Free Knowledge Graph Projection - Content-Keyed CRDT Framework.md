@@ -159,6 +159,8 @@ The state of a CK-CRDT peer is the bag of operations it has received; the merge 
 
 **Definition 5 (Foreign-Key Dependency).** A downstream CRDT $M_{\text{down}}$ has a *foreign-key dependency* on an upstream CK-CRDT $M_{\text{CK}}$ if the schema of $M_{\text{down}}$'s operations includes fields whose values are entity IDs produced by $M_{\text{CK}}$.
 
+**Notation.** Let $R_{\text{id}} : \text{ID} \to \text{ID}$ denote the *canonical redirect function*: for any entity ID $e$, $R_{\text{id}}(e) = e$ if $e$ is a canonical (winning) entity, and $R_{\text{id}}(e) = e'$ where $e'$ is the canonical entity merged from $e$ otherwise. $R_{\text{id}}$ is derived from the redirect map $R$ (Definition 3) by following chains to their fixed point.
+
 **Theorem 2 (Layered No-Orphan Invariant — Sufficiency).** Let $M_{\text{CK}}$ be a CK-CRDT that has been fully merged (the upstream bag $B$ is complete), producing canonical entity IDs via $W(B)$. Let $M_{\text{down}}$ be a downstream CRDT with foreign-key dependencies on those IDs. If $M_{\text{down}}$ applies $R_{\text{id}}$ to all edge endpoints at write time, then every edge endpoint in $M_{\text{down}}$'s output references an entity in $W(B)$ — the no-orphan invariant holds.
 
 *Proof:*
@@ -167,7 +169,7 @@ Assume $M_{\text{down}}$ applies $R_{\text{id}}$ to all edge endpoints at write 
 
 **Remark.** The converse (necessity) is not unconditional: if no losers exist (each key class has exactly one operation), the invariant holds even without $R_{\text{id}}$. In practice, losers are guaranteed whenever multiple peers independently create operations in the same key-class, which is the primary CK-CRDT use case. Systems requiring strict necessity should verify that at least one key-class has multiple operations.
 
-**Corollary 2.** In our pipeline, the orphan guard (`crdt_projection.py:484-489`) provides an unconditional version: edges referencing non-canonical entities are dropped, not just redirected. This is strictly stronger than Theorem 2 requires.
+**Corollary 2.** In our pipeline, the orphan guard (`crdt_projection.py:495-501`) provides an unconditional version: edges referencing non-canonical entities are dropped, not just redirected. This is strictly stronger than Theorem 2 requires.
 
 **Worked example: concurrent edge write during redirect.** Consider three peers: Peer A creates entity $e_1$ (key $k_1$), Peer B creates entity $e_2$ (key $k_1$, same content), and Peer C writes edge $e_3 \to e_2$. At projection time, Phase 2 merges $e_1$ and $e_2$ (same fingerprint), selecting $e_1 = \max(e_1, e_2)$ as canonical. The redirect map is $R = \{e_2 \to e_1\}$. Peer C's edge $e_3 \to e_2$ references a loser ID.
 
@@ -180,7 +182,7 @@ Both approaches satisfy the no-orphan invariant. The production path is strictly
 
 ## 5. Theorem 3: Kernel of CK-Merge
 
-**Theorem 3 (Kernel of CK-Merge).** The merge function $M_{\text{CK}}$ is many-to-one over each equivalence class. The kernel of $M_{\text{CK}}$ — the set of operation sets that produce the same canonical output — is exactly the partition into key-classes. Two operation sets $O_1, O_2$ produce the same $M_{\text{CK}}(O_1) = M_{\text{CK}}(O_2)$ iff for every key-class $C_k$, the representative $\rho_k(C_k \cap O_1) = \rho_k(C_k \cap O_2)$. We assume operations from different key-classes are distinguishable (e.g., the merge output carries key tags or operations are typed by key).
+**Theorem 3 (Kernel of CK-Merge).** The merge function $M_{\text{CK}}$ is many-to-one over each equivalence class. The kernel of $M_{\text{CK}}$ — the set of operation sets that produce the same canonical output — is exactly the partition into key-classes, provided operations from different key-classes are distinguishable (Assumption D: the merge output carries key tags, or operations are typed by key, so that representatives from different classes can be identified in the output). Under Assumption D, two operation sets $O_1, O_2$ produce the same $M_{\text{CK}}(O_1) = M_{\text{CK}}(O_2)$ iff for every key-class $C_k$, the representative $\rho_k(C_k \cap O_1) = \rho_k(C_k \cap O_2)$.
 
 *Proof:*
 
@@ -353,7 +355,7 @@ Let $\kappa'(o) = (\kappa_1(o), \kappa_2(o))$ where $\kappa_i : \mathcal{O} \to 
 
 *Proof:*
 
-($\Rightarrow$) Suppose $G$ is acyclic. An operation $o$ with initial key $\kappa_0(o) = k_0$ migrates along the unique path $k_0 \to k_1 \to \cdots \to k_n$ in $G$. Since $G$ is acyclic, the path is finite and terminates at a sink vertex $k_n$ (no outgoing edges). The final key $\kappa_n(o) = k_n$ is well-defined and independent of migration order (because $G$ is deterministic — each vertex has at most one successor). Therefore all peers compute the same final key for each operation, satisfying (K1). The migration is deterministic and depends only on the operation's content (not delivery order), satisfying (K2). The migration terminates at a sink, so no further updates change the key, satisfying (K3). Convergence follows from Theorem 4.
+($\Rightarrow$) Suppose $G$ is acyclic. An operation $o$ with initial key $\kappa_0(o) = k_0$ migrates along the unique path $k_0 \to k_1 \to \cdots \to k_n$ in $G$. Since $G$ is acyclic and deterministic (at most one outgoing edge per vertex), the path is finite, has length at most $|V|-1$, and terminates at a unique sink vertex $k_n$ (no outgoing edges). The final key $\kappa_n(o) = k_n$ is well-defined and independent of migration order — it is the unique sink reachable from $k_0$ in $G$. Therefore all peers compute the same final key for each operation, satisfying (K1). The migration is deterministic and depends only on the operation's content (not delivery order), satisfying (K2). The migration terminates at a sink after at most $|V|-1$ steps, so no further updates change the key, satisfying (K3). Convergence follows from Theorem 4.
 
 ($\Leftarrow$) Suppose $G$ contains a cycle $k_0 \to k_1 \to \cdots \to k_0$. An operation $o$ with initial key $k_0$ would migrate on every merge application, cycling indefinitely and never reaching a stable key. Two peers that have applied merge different numbers of times to the same initial operation (due to different delivery histories) will have different $\kappa$ values for that operation, violating (K1). Note: if the migration function is bounded (e.g., time-to-live counters or history-dependent stopping conditions), cycles may converge — the framework's acyclicity condition applies to unbounded, deterministic migration. $\square$
 
