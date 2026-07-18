@@ -11,7 +11,7 @@
 
 ## Abstract
 
-We identify a previously unnamed pattern in distributed systems: *content-keyed CRDTs* (CK-CRDTs) — a CRDT subclass whose merge partitions operations by a content-derived key and selects one representative per class. This pattern appears in content-addressed storage (IPFS), version control (Git), deduplicating sync, and entity resolution, but has never been formalized as a CRDT subclass. We prove eight structural results: (1) representative-selection is monotone under argmax over a total order (Theorem 1); (2) canonicalization-at-write-time suffices for no-orphan guarantees under downstream CRDTs (Theorem 2); (3) merge discards exactly the within-class loser set, unrecoverable from canonical state (Theorem 3); (4) three content-key properties — determinism, content-locality, and non-key invariance — are *necessary and sufficient* for convergence, with a counterexample showing each property is individually required (Theorem 4); (5) composite keys inherit convergence (Theorem 5); (6) deterministic approximate keys converge (Theorem 6); (7) adaptive keys converge if the migration graph is acyclic, and cycles may break convergence (Theorem 7); (8) CK-CRDTs compose with delta-CRDTs when the delta computation is stratified (Theorem 8). The framework classifies Docker, IPFS, Git, Yjs, Automerge, and Loro as instances or non-instances, explaining exactly when content-keying is necessary and when ID-at-creation suffices.
+We identify a previously unnamed pattern in distributed systems: *content-keyed CRDTs* (CK-CRDTs) — a CRDT subclass whose merge partitions operations by a content-derived key and selects one representative per class. This pattern appears in content-addressed storage (IPFS), version control (Git), deduplicating sync, and entity resolution, but has never been formalized as a CRDT subclass. We prove eight structural results: (1) representative-selection is monotone under argmax over a total order (Theorem 1); (2) canonicalization-at-write-time suffices for no-orphan guarantees under downstream CRDTs (Theorem 2); (3) merge discards exactly the within-class loser set, unrecoverable from canonical state — and this loss is a tight lower bound for any K1-K3-compliant merge (Theorems 3, 3b); (4) three content-key properties — determinism, content-locality, and non-key invariance — are *necessary and sufficient* for convergence, with a counterexample showing each property is individually required (Theorem 4); (5) composite keys inherit convergence (Theorem 5); (6) deterministic approximate keys converge (Theorem 6); (7) adaptive keys converge if the migration graph is acyclic, and cycles may break convergence (Theorem 7); (8) CK-CRDTs compose with delta-CRDTs when the delta computation is stratified (Theorem 8). The framework classifies Docker, IPFS, Git, Yjs, Automerge, and Loro as instances or non-instances, explaining exactly when content-keying is necessary and when ID-at-creation suffices.
 
 ---
 
@@ -48,7 +48,7 @@ This paper is the theoretical companion to Sadhu [14], which provides the refere
 - **Definition of CK-CRDTs** (§2): a formal class of CRDTs characterized by content-keyed partitioning.
 - **Theorem 1 (Content-Key Monotonicity)** (§3): for argmax representative-selection, monotonicity and content-stability are equivalent.
 - **Theorem 2 (Layered No-Orphan Invariant)** (§4): for any composition of a CK-CRDT followed by a downstream CRDT with foreign-key dependencies, the no-orphan invariant holds if the downstream CRDT applies canonicalization at write time.
-- **Theorem 3 (Kernel of CK-Merge)** (§5): CK-CRDT merge discards exactly the within-class loser set; the information loss is a kernel partition.
+- **Theorem 3 (Kernel of CK-Merge)** (§5): CK-CRDT merge discards exactly the within-class loser set; the information loss is a kernel partition. **Theorem 3b (Lower bound):** any K1-K3-compliant merge must discard at least $|O| - |\kappa(O)|$ operations; the bound is tight.
 - **Theorem 4 (Content Key Properties)** (§6): three properties — determinism, content-locality, non-key invariance — are sufficient for convergence; violating any one can cause convergence failure or correctness degradation.
 - **Theorem 5 (Multi-key Convergence)** (§9.1): composite keys inherit convergence from their components.
 - **Theorem 6 (Approximate Key Convergence)** (§9.2): deterministic approximate keys converge; non-deterministic ones fail.
@@ -191,6 +191,16 @@ Both approaches satisfy the no-orphan invariant. The production path is strictly
 ($\Leftarrow$) If for every key $k$, the representative is the same, then $M_{\text{CK}}(O_1)$ and $M_{\text{CK}}(O_2)$ produce identical representative sets by definition of $M_{\text{CK}}$. $\square$
 
 **Information-loss corollary.** The information discarded by CK-CRDT merge is exactly the within-class loser set $O \setminus W(O)$, where $W(O) = \{\rho_k(C_k) : k \in \kappa(O)\}$. This is not recoverable from the canonical state: for any class $C$, any subset $C' \subseteq C$ may be designated losers and the merge output is invariant.
+
+**Theorem 3b (Information-loss lower bound).** Any CK-CRDT merge $(\kappa, \{\rho_k\}, M)$ satisfying (K1)–(K3) must discard at least $|O| - |\kappa(O)|$ operations. This bound is tight: the CK-CRDT merge achieves exactly this loss.
+
+*Proof.* We show two things: (1) the loss is at least $|O| - |\kappa(O)|$, and (2) CK-CRDT merge achieves exactly this.
+
+(1) **Lower bound.** The canonical state $\Sigma$ contains at most one representative per key class. Since there are $|\kappa(O)|$ distinct keys, $|\Sigma| \leq |\kappa(O)|$. Therefore the number of discarded operations is at least $|O| - |\kappa(O)|$.
+
+(2) **Tightness.** CK-CRDT merge produces exactly $|\kappa(O)|$ representatives (one per non-empty class), discarding exactly $|O| - |\kappa(O)|$ operations. No K1-K3-compliant merge can do better: if a merge retained more than one operation per class, it would need to distinguish between operations within the same class. But by (K2), $\kappa$ depends only on content fields — two operations with the same content fields have the same key and are in the same class. A deterministic merge (K1) applied to a content-local key (K2) cannot distinguish between them, so it must select exactly one representative per class. $\square$
+
+**Corollary 3b.** The information-loss bound $|O| - |\kappa(O)|$ is independent of the specific merge function $\rho_k$. Any two CK-CRDT merges satisfying (K1)–(K3) with the same key function $\kappa$ discard the same number of operations, though they may discard different operations (different winners).
 
 ---
 
