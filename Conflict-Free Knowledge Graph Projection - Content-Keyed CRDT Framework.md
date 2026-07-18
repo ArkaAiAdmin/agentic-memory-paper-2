@@ -437,6 +437,8 @@ Automerge uses UUIDs assigned at creation. Agent A creates `{_id: "uuid-a", name
 
 **The tradeoff is structural, not qualitative.** CK-CRDTs and ID-at-creation systems solve different problems. CK-CRDTs are necessary when multiple peers create semantically identical entities independently and the system must collapse duplicates at merge time. ID-at-creation is necessary when entities are unique by construction and position-tracking requires stable identities. The framework (§8.1) identifies exactly when each approach is appropriate.
 
+**Quantitative comparison.** Paper 1 [14] §7.1 reports a head-to-head benchmark: on 5,000 concurrent entity ops with 50 distinct entities, the naive merge (ID-at-creation semantics) produces 4,950 duplicates and 460 orphan edges; the CK-CRDT pipeline deduplicates to 50 canonical entities with zero orphans at 38% overhead — dominated by Phase 1 entity merge (94% of runtime), not by content-keyed dedup.
+
 ---
 
 ## Appendix B: Cross-Paper Instantiation Map
