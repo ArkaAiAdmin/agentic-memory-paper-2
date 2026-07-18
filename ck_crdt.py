@@ -533,7 +533,7 @@ def run_all_tests():
     for i in range(N5):
         group = i % K5  # which entity (0..K5-1)
         peer = i // K5   # which peer created it (0..N5/K5-1)
-        eid = group * 1000 + peer  # unique ID per peer per entity
+        eid = group * (N5 // K5) + peer  # unique ID per peer per entity (non-overlapping)
         # All ops in same group share content → cross-eid collisions
         big_eops5.append(EntityOp(
             eid, f"agent_{peer % 10}", "add",
