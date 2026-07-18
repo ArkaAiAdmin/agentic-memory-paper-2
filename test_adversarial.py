@@ -109,24 +109,50 @@ class TestFingerprintCollisionResistance:
         fps = {compute_fingerprint(v, "person", "") for v in variants}
         assert len(fps) == 1, f"All variants should produce same fingerprint, got {len(fps)} distinct"
 
-    def test_canonicalisation_known_limitations(self):
-        """Unicode whitespace (zero-width space, non-breaking space) is NOT normalized
-        by the current canonicalization. This is a documented limitation: the
-        canonicalizer strips ASCII whitespace only. Two entities with zero-width
-        space differences will NOT collapse — they coexist as separate entities.
+    def test_canonicalisation_unicode_whitespace_nfkc(self):
+        """NFKC + Cf-stripping handles Unicode format characters and space variants."""
+        variants = [
+            "alice",
+            "\u00A0alice",       # non-breaking space → space (NFKC)
+            "alice\u200B",       # zero-width space → removed (Cf-stripping)
+            "alice\u2060",       # word joiner → removed (Cf-stripping)
+            "alice\uFEFF",       # BOM/ZWNBSP → removed (Cf-stripping)
+        ]
+        fps = {compute_fingerprint(v, "person", "") for v in variants}
+        assert len(fps) == 1, f"NFKC variants should produce same fingerprint, got {len(fps)} distinct"
 
-        This is the correct behavior for a system that prioritizes false-negative
-        dedup (entities coexist) over false-positive dedup (entities incorrectly merged).
+    def test_nfkc_normalization_covers_unicode_whitespace(self):
+        """NFKC + Cf-stripping handles zero-width spaces and non-breaking spaces.
+
+        Canonicalization pipeline:
+        1. NFKC: \u00A0 (NBSP, category Zs) → regular space
+        2. Cf-stripping: \u200B (ZWSP, category Cf) → removed
+        3. Smart quotes (Pi/Pf) are NOT stripped — they're meaningful punctuation
         """
         fp_ascii = compute_fingerprint("alice", "person", "")
-        fp_nbsp = compute_fingerprint("\u00A0alice", "person", "")   # non-breaking space
-        fp_zws = compute_fingerprint("alice\u200B", "person", "")   # zero-width space
+        fp_nbsp = compute_fingerprint("\u00A0alice", "person", "")   # non-breaking space (Zs)
+        fp_zws = compute_fingerprint("alice\u200B", "person", "")   # zero-width space (Cf)
 
-        # These MAY differ (documented limitation)
-        if fp_ascii != fp_nbsp:
-            pass  # Non-breaking space creates different fingerprint → entities coexist
-        if fp_ascii != fp_zws:
-            pass  # Zero-width space creates different fingerprint → entities coexist
+        # Both normalized to the same fingerprint
+        assert fp_ascii == fp_nbsp, "NBSP (Zs) should be normalized by NFKC"
+        assert fp_ascii == fp_zws, "ZWSP (Cf) should be stripped"
+
+    def test_nfkc_preserves_semantic_distinction(self):
+        """NFKC normalizes Unicode variants but preserves semantic content differences."""
+        fp_lawyer = compute_fingerprint("alice", "person", "corporate lawyer")
+        fp_chef = compute_fingerprint("alice", "person", "executive chef")
+        assert fp_lawyer != fp_chef, "Different descriptions must still produce different fingerprints"
+
+    def test_smart_quotes_not_stripped(self):
+        """Smart quotes (Pi/Pf category) are NOT format characters — they stay.
+
+        This is correct: "\u201Calice\u201D" (quoted) vs "alice" (unquoted)
+        are semantically different and should produce different fingerprints.
+        """
+        fp_plain = compute_fingerprint("alice", "person", "")
+        fp_quoted = compute_fingerprint("\u201Calice\u201D", "person", "")
+        # Smart quotes are punctuation, not format chars → fingerprints differ
+        assert fp_plain != fp_quoted, "Smart quotes are meaningful punctuation"
 
     def test_canonicalisation_multibyte_unicode(self):
         """Multibyte characters don't corrupt the SHA-256 payload."""

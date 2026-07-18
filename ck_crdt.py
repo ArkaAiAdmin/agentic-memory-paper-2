@@ -17,6 +17,7 @@ import hashlib
 import json
 import sqlite3
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -66,8 +67,17 @@ def compute_fingerprint(name: str, entity_type: str, description: str = "") -> s
     K3 (non-key invariance): changing a non-key field (e.g., adding metadata)
         does not change the fingerprint, because the fingerprint reads only
         content fields.
+
+    Canonicalization pipeline:
+    1. NFKC normalization (handles NBSP → space, fi-ligature → "fi", etc.)
+    2. Strip format characters (category Cf: zero-width spaces, RTL marks, etc.)
+    3. Lowercase + collapse whitespace
     """
-    canonical = lambda s: " ".join(s.lower().strip().split())
+    def canonical(s: str) -> str:
+        s = unicodedata.normalize("NFKC", s)
+        s = "".join(c for c in s if unicodedata.category(c) not in ("Cf", "Cc", "Co"))
+        return " ".join(s.lower().strip().split())
+
     payload = f"{canonical(name)}|{canonical(entity_type)}|{canonical(description)}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
