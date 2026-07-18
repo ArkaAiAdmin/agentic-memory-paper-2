@@ -258,6 +258,8 @@ K1–K3 are *sufficient* for convergence. Violating any one does not guarantee c
 
 **Third-party instantiation: Docker/OCI image layer deduplication.** Docker's storage driver deduplicates image layers across images using content-addressed hashing (SHA-256 of the layer tarball). When two images share a layer — same filesystem contents, different build contexts — only one copy is stored on disk. This is a CK-CRDT instance: the content key $\kappa$ is the SHA-256 hash of the layer content; (K1) holds because identical layer contents produce identical hashes; (K2) holds because the hash depends only on the layer's filesystem content, not on which image references it or when it was built; (K3) is vacuous because layers are immutable once created. The "merge" selects one representative per key class (the stored layer) and discards duplicates — exactly the CK-CRDT pattern. Docker did not design this as a CK-CRDT; the framework classifies it post-hoc. This is the intended use of the formalism: not to prescribe design, but to illuminate structure that already exists in systems built independently. Note that Docker's layer eviction (reference-count GC when images are removed) is a non-tombstone membership model, unlike the 2P-Set semantics in entity dedup. The framework is agnostic to membership structure: K1–K3 constrain the content key, not how members are added or removed from a key class.
 
+**What Docker doesn't do that CK-CRDTs do.** Docker's dedup is passive: identical layers are stored once, but there is no merge operation, no redirect map, and no convergence guarantee across independent registries. If two Docker Hub mirrors independently build the same layer, they store one copy each — there is no mechanism to reconcile them. A CK-CRDT formulation would add: (1) a redirect map that records which layer IDs are equivalent, enabling cross-registry dedup after sync; (2) a convergence guarantee: two mirrors that start with the same layers and receive the same build operations will converge to the same canonical state; (3) an orphan invariant: no image manifest references a layer that doesn't exist in the canonical store. These are exactly the properties our knowledge-graph pipeline provides (§5 of [14]). Docker doesn't need them because it operates in a single-registry model; multi-registry sync (Docker Hub <-> ECR <-> GCR) would.
+
 **Nix as a borderline case.** Nix content-addressed store paths are computed from derivation inputs; two identical builds produce the same path. This is the pure keying pattern, and Nix *does* have a merge-like operation (channel merging, template instantiation). It illustrates the framework's boundaries: the keying pattern holds, but whether the merge is a CK-CRDT depends on the specific merge implementation.
 
 ---
@@ -295,7 +297,11 @@ This paper generalizes the three-phase knowledge-graph projection pipeline descr
 - **Unicode canonicalization.** The reference implementation applies Unicode NFKC normalization (handles NBSP, ligatures, compatibility equivalents), strips format characters (ZWSP, RTL marks, BOM), and collapses whitespace. Smart quotes (`\u201C`/`\u201D`) are preserved as meaningful punctuation. Agents using different Unicode normalizations may still produce different fingerprints if their canonicalizers disagree on edge cases. Verified empirically via adversarial tests (`test_adversarial.py::test_nfkc_normalization_covers_unicode_whitespace`).
 - **Adversarial robustness (verified).** The framework was tested against 31 adversarial scenarios including timestamp skew, Byzantine version vectors, 10K operations with colliding fingerprints, and K1-necessity counterexamples. The CK-CRDT merge degrades gracefully under adversarial input — a 10,000-operation single-fingerprint group merges in <0.1s without crash or data corruption. Linear scaling confirmed: 100K→1M→10M ops at constant 0.2M ops/s throughput. The K1-necessity counterexample (two peers using different normalizations producing different fingerprints) confirms that K1 is both necessary and sufficient for convergence. See `test_adversarial.py` for the full suite.
 
-### 8.4 Open Problems
+### 8.4 Where the Framework Breaks
+
+The CK-CRDT framework has three structural failure modes. **First, content-key collisions across unrelated entities.** If two genuinely distinct entities happen to share identical `(name, type, description)` fields — "Java" (the programming language) and "Java" (the island) — the framework merges them. This is not a bug; it is a fundamental limitation of content-keying. The framework can detect the collision (different `entity_id`s, same fingerprint) but cannot resolve it without external disambiguation. Systems that need to distinguish such homonyms must extend the content key with additional fields (e.g., source document, mention context) — moving toward Theorem 5's composite keys. **Second, causal dependencies across key classes.** The framework assumes operations in different key-classes are independent. In practice, entity creation (class A) and edge referencing (class B) have causal dependencies: an edge cannot exist without its endpoints. Theorem 2 addresses this for the specific case of foreign-key redirects, but a general treatment of cross-class causality is open. A system that violates this assumption (e.g., processing edges before entities are projected) may produce transient orphans that the framework cannot prevent. **Third, adaptive key cycles.** Theorem 7 proves that adaptive keys converge only when the migration graph is acyclic. If a key migration function creates a cycle (entity A's key migrates to B, B's key migrates back to A), convergence is not guaranteed. In practice, key migrations are rare andmonitored; cycles indicate a bug in the migration logic, not a framework limitation. But the framework provides no automatic detection or prevention.
+
+### 8.5 Open Problems
 
 1. **CK-CRDTs with partial-order $\rho$.** Theorem 1 requires a total order for the argmax. Can content-stability or monotonicity be defined and proven for $\rho$ operating over partial orders (e.g., vector clocks)?
 
@@ -381,6 +387,53 @@ We defined content-keyed CRDTs (CK-CRDTs) as a class of CRDTs whose merge partit
 8. **Delta-CRDT Composition** (Theorem 8): stratified delta computation preserves convergence under CK-CRDT merge.
 
 The framework classifies content-addressed systems, version control, deduplicating sync, collaborative editors, and our knowledge-graph pipeline. It explains why ID-at-creation systems (Yjs, Automerge) avoid content-keying (position-tracking requires ID-at-creation; the dedup capability would break sequence semantics) and when content-keying is necessary (when multiple peers create semantically identical entities independently).
+
+---
+
+## Appendix A: Worked Comparison with ID-at-Creation Systems
+
+We compare CK-CRDT merge with Yjs and Automerge on a concrete problem: two agents independently create the same entity and add edges to it.
+
+**Setup.** Agent A creates entity "alice" (ID=42) with type "person" and adds edge (42→15, "knows"). Agent B independently creates "alice" (ID=99) with type "person" and adds edge (99→30, "works_with"). The two agents then sync.
+
+### A.1 CK-CRDT Merge (Our Framework)
+
+Phase 1 (Entity merge): Both ops are `add` operations for entities with content `(name=alice, type=person)`. The content key $\kappa$ computes the same fingerprint for both. Merge selects the LWW winner by version vector: neither dominates (disjoint peers), so timestamp breaks the tie. Agent B's op (t=200) wins. Result: entity 99 survives, entity 42 is a loser.
+
+Phase 2 (Dedup + redirect): Both entities share fingerprint → redirect map `{42: 99}`.
+
+Phase 3 (Edge redirect): Edge (42→15) is rewritten to (99→15). Edge (99→30) passes through.
+
+**Final state:** 2 canonical entities (99/alice, 15/bob), 2 edges ((99→15), (99→30)). No orphans.
+
+### A.2 Yjs Merge
+
+Yjs assigns a client-generated clock-based ID at creation. Agent A creates `Y.Map()` with ID `clientA:1`. Agent B creates `Y.Map()` with ID `clientB:1`. These are distinct Yjs objects — Yjs has no mechanism to detect they represent the same entity.
+
+**Final state:** 3 objects: `clientA:1` (alice), `clientB:1` (alice), and whatever edges exist. No dedup occurs. The application layer must implement entity resolution separately.
+
+**What Yjs does well:** Position-preserving text editing, real-time collaboration, offline support. Yjs is optimized for the case where entities are unique by construction (each character position has a unique ID). Content-keying would break sequence semantics.
+
+### A.3 Automerge Merge
+
+Automerge uses UUIDs assigned at creation. Agent A creates `{_id: "uuid-a", name: "alice", type: "person"}`. Agent B creates `{_id: "uuid-b", name: "alice", type: "person"}`. Automerge merges by per-field LWW using actor IDs.
+
+**Final state:** Automerge sees two distinct objects (different `_id`s). It does not deduplicate. The document contains both `uuid-a` and `uuid-b` with identical content. Automerge's merge is correct (no data loss) but does not collapse duplicates.
+
+**What Automerge does well:** JSON document editing, field-level LWW, portable snapshot format. Like Yjs, it assumes entities are unique by construction.
+
+### A.4 Summary
+
+| Property | CK-CRDT | Yjs | Automerge |
+|---|---|---|---|
+| Entity dedup | Yes (content key) | No (ID-at-creation) | No (ID-at-creation) |
+| Redirect map | Yes | No | No |
+| No-orphan invariant | Yes (Theorem 2) | No (application must ensure) | No (application must ensure) |
+| Position tracking | No (not designed for it) | Yes (optimized for it) | Yes (supported) |
+| Offline sync | Yes (CRDT) | Yes (CRDT) | Yes (CRDT) |
+| Convergence guarantee | Yes (Theorems 1, 4) | Yes (CRDT) | Yes (CRDT) |
+
+**The tradeoff is structural, not qualitative.** CK-CRDTs and ID-at-creation systems solve different problems. CK-CRDTs are necessary when multiple peers create semantically identical entities independently and the system must collapse duplicates at merge time. ID-at-creation is necessary when entities are unique by construction and position-tracking requires stable identities. The framework (§8.1) identifies exactly when each approach is appropriate.
 
 ---
 
