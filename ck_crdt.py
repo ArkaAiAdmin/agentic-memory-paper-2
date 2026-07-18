@@ -544,59 +544,77 @@ def run_all_tests():
 # ---------------------------------------------------------------------------
 
 
-def test_k1_determinism():
-    """K1: same inputs → same fingerprint."""
-    cases = [
-        ("alice", "person", ""),
-        ("alice", "person", "lawyer"),
-        ("bob", "concept", "python programming"),
-        ("", "", ""),
-    ]
-    for name, etype, desc in cases:
-        fp1 = compute_fingerprint(name, etype, desc)
-        fp2 = compute_fingerprint(name, etype, desc)
-        assert fp1 == fp2, f"K1 violated for ({name}, {etype}, {desc})"
-    # Also: different inputs → different fingerprints
-    assert compute_fingerprint("alice", "person", "") != compute_fingerprint("bob", "person", "")
-    assert compute_fingerprint("alice", "person", "") != compute_fingerprint("alice", "person", "lawyer")
-    print("K1 (determinism): PASS")
+def test_k1_collision_resistance():
+    """K1: content-collisions collapse; distinct content separates."""
+    fp1 = compute_fingerprint("alice", "person", "lawyer")
+    fp2 = compute_fingerprint("alice", "person", "lawyer")
+    assert fp1 == fp2, "K1: same content must produce same fingerprint"
+
+    fp3 = compute_fingerprint("alice", "person", "chef")
+    assert fp1 != fp3, "K1: different content must produce different fingerprint"
+
+    fp4 = compute_fingerprint("alice", "person", "")  # empty desc
+    assert fp1 != fp4, "K1: empty vs non-empty description must differ"
+
+    # Critical: two ops with same content but different metadata
+    # must produce same fingerprint (merge groups them correctly)
+    op_a = EntityOp(1, "peer_a", "add", {"a": 1}, "alice", "person", "lawyer", "", 100.0)
+    op_b = EntityOp(2, "peer_b", "add", {"b": 1}, "alice", "person", "lawyer", "", 200.0)
+    merged = merge_entity_ops([op_a, op_b])
+    # Both ops have identical content → same fingerprint
+    assert merged[1]["fingerprint"] == merged[2]["fingerprint"], \
+        "K1: merge must assign same fingerprint to content-identical ops"
+    print("K1 (collision resistance): PASS")
 
 
-def test_k2_content_locality():
-    """K2: fingerprint depends only on content fields, not on timestamps, peer IDs, or other ops."""
-    # Same content, different "contexts" (simulated timestamps, peer IDs)
-    fp_base = compute_fingerprint("alice", "person", "lawyer")
+def test_k2_metadata_invariance():
+    """K2: identical content from different peers/timestamps yields same fingerprint."""
+    # Two ops with same content but different metadata (peer, timestamp, VV)
+    op_a = EntityOp(1, "peer_a", "add", {"a": 1}, "alice", "person", "lawyer", "", 100.0)
+    op_b = EntityOp(2, "peer_b", "add", {"b": 1}, "alice", "person", "lawyer", "", 200.0)
 
-    # These would be different if fingerprint depended on metadata
-    # (it doesn't — K2 guarantees content-only dependency)
-    assert fp_base == compute_fingerprint("alice", "person", "lawyer")
-    assert fp_base == compute_fingerprint("alice", "person", "lawyer")
+    merged = merge_entity_ops([op_a, op_b])
 
-    # Different content → different fingerprint (sanity check)
-    assert fp_base != compute_fingerprint("alice", "person", "chef")
-    print("K2 (content-locality): PASS")
+    # K2: fingerprint is computed from CONTENT, not metadata.
+    # Both ops have identical (name, type, description) → same fingerprint.
+    fp_a = merged[1]["fingerprint"]
+    fp_b = merged[2]["fingerprint"]
+    assert fp_a == fp_b, "K2: metadata differences must not affect fingerprint"
+
+    # After dedup, only one survives — confirming the merge groups them correctly
+    dedup = entity_dedup_via_crdt(merged)
+    assert len(dedup["merged_state"]) == 1, "K2: content-identical ops must collapse to one entity"
+    assert len(dedup["redirects"]) == 1, "K2: one redirect expected"
+    print("K2 (metadata invariance): PASS")
 
 
 def test_k3_non_key_invariance():
-    """K3: updating non-key fields doesn't change the fingerprint."""
-    # Key fields: name, entity_type, description (as read by compute_fingerprint)
-    # Non-key fields: timestamps, peer IDs, version vectors (not read by fingerprint)
+    """K3: metadata updates don't split or merge classes incorrectly."""
+    # Compute fingerprints from content (as the real system does)
+    fp_lawyer = compute_fingerprint("alice", "person", "lawyer")
+    fp_chef = compute_fingerprint("alice", "person", "chef")
 
-    # Scenario: entity created at t=100 by peer "a", then enriched at t=200 by peer "b"
-    # The fingerprint should be the same because content fields haven't changed
-    fp_t100 = compute_fingerprint("alice", "person", "lawyer")
-    fp_t200 = compute_fingerprint("alice", "person", "lawyer")
-    assert fp_t100 == fp_t200, "K3 violated: timestamp change altered fingerprint"
+    # Entity created with description="lawyer" at t=100
+    op_create = EntityOp(1, "peer_a", "add", {"a": 1}, "alice", "person", "lawyer", fp_lawyer, 100.0)
+    # Same entity enriched with description="lawyer" at t=200 (no content change)
+    op_enrich = EntityOp(1, "peer_b", "add", {"a": 2}, "alice", "person", "lawyer", fp_lawyer, 200.0)
+    # Different entity with description="chef" at t=150
+    op_other = EntityOp(2, "peer_c", "add", {"c": 1}, "alice", "person", "chef", fp_chef, 150.0)
 
-    # Scenario: entity created with different peer IDs
-    fp_peer_a = compute_fingerprint("alice", "person", "lawyer")
-    fp_peer_b = compute_fingerprint("alice", "person", "lawyer")
-    assert fp_peer_a == fp_peer_b, "K3 violated: peer ID change altered fingerprint"
+    merged = merge_entity_ops([op_create, op_enrich, op_other])
 
-    # Scenario: content field change DOES change fingerprint (this is correct behavior)
-    fp_before = compute_fingerprint("alice", "person", "lawyer")
-    fp_after = compute_fingerprint("alice", "person", "chef")
-    assert fp_before != fp_after, "K3 sanity: content change should alter fingerprint"
+    # K3: op_create and op_enrich have same content → same fingerprint → same class
+    # (both are entity_id=1, so they merge into one entry)
+    # op_other has different description → different fingerprint → different class
+    assert merged[1]["fingerprint"] == fp_lawyer, "K3: lawyer fingerprint must be preserved"
+    assert merged[2]["fingerprint"] == fp_chef, "K3: chef fingerprint must be preserved"
+    assert merged[1]["fingerprint"] != merged[2]["fingerprint"], \
+        "K3: different descriptions must produce different fingerprints"
+
+    dedup = entity_dedup_via_crdt(merged)
+    # Two distinct fingerprints → two canonical entities (lawyer and chef coexist)
+    assert len(dedup["merged_state"]) == 2, "K3: different descriptions must produce distinct entities"
+    assert len(dedup["redirects"]) == 0, "K3: no redirects (different fingerprints)"
     print("K3 (non-key invariance): PASS")
 
 
@@ -728,8 +746,8 @@ if __name__ == "__main__":
     print("=" * 60)
     print("Property tests (K1-K3, convergence, no-orphan)")
     print("=" * 60)
-    test_k1_determinism()
-    test_k2_content_locality()
+    test_k1_collision_resistance()
+    test_k2_metadata_invariance()
     test_k3_non_key_invariance()
     test_convergence_2peer()
     test_convergence_cross_peer()
