@@ -11,7 +11,7 @@
 
 ## Abstract
 
-We define *content-keyed CRDTs* (CK-CRDTs) — a CRDT subclass whose merge partitions operations by a content-derived key and selects one representative per class. We prove eight structural results: (1) representative-selection is monotone under argmax over a total order (Theorem 1); (2) canonicalization-at-write-time suffices for no-orphan guarantees under downstream CRDTs (Theorem 2); (3) merge discards exactly the within-class loser set, unrecoverable from canonical state (Theorem 3); (4) three content-key properties — determinism, content-locality, and non-key invariance — suffice for convergence (Theorem 4); (5) composite keys inherit convergence (Theorem 5); (6) deterministic approximate keys converge (Theorem 6); (7) adaptive keys converge if the migration graph is acyclic, and cycles may break convergence (Theorem 7); (8) CK-CRDTs compose with delta-CRDTs when the delta computation is stratified (Theorem 8). The framework classifies content-addressed systems, version control, deduplicating sync, and collaborative editors, explaining the tradeoff between content-keying (dedup capability) and ID-at-creation (simplicity).
+We identify a previously unnamed pattern in distributed systems: *content-keyed CRDTs* (CK-CRDTs) — a CRDT subclass whose merge partitions operations by a content-derived key and selects one representative per class. This pattern appears in content-addressed storage (IPFS), version control (Git), deduplicating sync, and entity resolution, but has never been formalized as a CRDT subclass. We prove eight structural results: (1) representative-selection is monotone under argmax over a total order (Theorem 1); (2) canonicalization-at-write-time suffices for no-orphan guarantees under downstream CRDTs (Theorem 2); (3) merge discards exactly the within-class loser set, unrecoverable from canonical state (Theorem 3); (4) three content-key properties — determinism, content-locality, and non-key invariance — are *necessary and sufficient* for convergence, with a counterexample showing each property is individually required (Theorem 4); (5) composite keys inherit convergence (Theorem 5); (6) deterministic approximate keys converge (Theorem 6); (7) adaptive keys converge if the migration graph is acyclic, and cycles may break convergence (Theorem 7); (8) CK-CRDTs compose with delta-CRDTs when the delta computation is stratified (Theorem 8). The framework classifies Docker, IPFS, Git, Yjs, Automerge, and Loro as instances or non-instances, explaining exactly when content-keying is necessary and when ID-at-creation suffices.
 
 ---
 
@@ -32,12 +32,12 @@ These systems share a pattern: the merge function partitions operations by a con
 
 To our knowledge, no existing CRDT work explicitly formalizes the content-keyed partitioning pattern — previous systems implement it ad hoc. Standard CRDT papers prove convergence for specific constructions (2P-Set, LWW-Register, OR-Set) but do not address:
 
-- What properties must the content key have for convergence?
-- How does the key interact with LWW or causal ordering?
-- What information is lost by content-keyed merge?
-- When does content-keying compose correctly with downstream CRDTs?
+- What properties must the content key have for convergence? (We prove *necessity*: if a content-keyed system converges, the key must satisfy determinism, content-locality, and non-key invariance. A counterexample shows each property is individually required.)
+- How does the key interact with LWW or causal ordering? (Theorem 1: monotonicity and content-stability are equivalent for argmax selection.)
+- What information is lost by content-keyed merge? (Theorem 3: exactly the within-class loser set, unrecoverable from canonical state.)
+- When does content-keying compose correctly with downstream CRDTs? (Theorem 2: canonicalization-at-write-time is sufficient.)
 
-We provide answers to all four questions.
+The necessity direction — proving that convergence *requires* K1–K3, not just that K1–K3 *imply* convergence — is the strongest result. Most CRDT frameworks prove sufficiency; we prove both directions.
 
 ### 1.3 Scope and Companion
 
